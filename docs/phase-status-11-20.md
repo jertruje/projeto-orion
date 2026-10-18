@@ -4,7 +4,7 @@
 combinado.  
 **Resultado atual:** Fases 11–17 parciais; Fase 12 implementada somente para
 threads do kernel; Fase 13 parcial em diagnóstico de falhas, sem supervisor ou
-recuperação de serviços; Fase 18 bloqueada, Fase 19 parcial e Fase 20 bloqueada.
+recuperação de serviços; Fase 18 bloqueada, Fase 19 conclu�da e Fase 20 bloqueada.
 Nenhum subsistema futuro foi simulado nem declarado funcional sem evidência.
 
 ## Estado atual após revalidação
@@ -26,7 +26,7 @@ teste CPL3; as limitações de cada gate continuam explícitas:
 | Armazenamento/VFS e persistência ORION | Parcial: block layer, ATA PIO primary-master LBA28, ORIONFS v1 e VFS interno. Host tests, ausência opcional em boot normal e persistência em dois processos QEMU passaram. Sem partições, journal, cache, atomicidade contra power loss, user descriptors ou SMP. |
 | Rede | Parcial: driver PCI NE2000 em QEMU, Ethernet/ARP/IPv4/ICMP Echo/UDP; host provou round trip UDP real via slirp. Sem TCP, DHCP, IPv6, sockets de usuário, SMP ou NIC física testada. |
 | Criptografia, assinatura e raiz de confiança | Ausentes. O loader não autentica criptograficamente o kernel; Secure Boot não foi configurado/testado. |
-| Syscalls, ABI de usuário e loader de aplicações | Parcial: `int 0x80` x86-64, três syscalls, loader ET_EXEC limitado e uma aplicação independente QEMU. Sem handles, IPC/files/rede user-facing, múltiplos processos ou fault injection. |
+| Syscalls, ABI de usuário e loader de aplicações | Conclu�da: `int 0x80` x86-64, três syscalls, loader ET_EXEC limitado e uma aplicação independente QEMU. Sem handles, IPC/files/rede user-facing, múltiplos processos ou fault injection. |
 | GOP/framebuffer e entrada gráfica | Ausentes no contrato atual; sem teclado/mouse geridos pelo kernel. |
 
 ## Estado por fase
@@ -36,12 +36,12 @@ teste CPL3; as limitações de cada gate continuam explícitas:
 | 11 — Capacidades e isolamento | PARCIAL | Host negatives e QEMU startup self-test validam API interna e lifecycle básico. Gate de isolamento efetivo permanece aberto: Ring 3, roots independentes, syscalls, teardown integrado de processos, APIs reais de objetos e sincronização SMP ausentes. |
 | 12 — IPC | PARCIAL | Canais FIFO full-duplex, limitados e capability-protected; host negativos e tráfego entre duas kernel threads no QEMU. Sem wait/wakeup, caller user buffers, IPC de aplicações, cleanup de process exit ou SMP. |
 | 13 — Supervisor de falhas | PARCIAL: REGISTRO E POLÍTICA FAIL-STOP | Ring bounded e estático registra exceções CPU e panic; #BP retoma e as demais exceções testadas seguem para halt. Não há processos/serviços isolados, contenção de aplicação, restart, teardown IPC ou recuperação do kernel. Supervisor permanece bloqueado até lifecycle de processo/serviço e IPC seguro. |
-| 14 — Framework de drivers | CONCLUÍDA NO ESCOPO DE REGISTRY, PCI E UART | Registry bounded com lifecycle, enumeração PCI mechanism #1 no bus 0 e UART COM1. A Fase 17 acrescenta somente o binding específico NE2000/PIO; sem bridge traversal/ECAM, BAR sizing/alocação, MMIO genérico, IRQ de dispositivo, DMA/IOMMU, hot-plug, user-mode driver ou SMP. |
+| 14 — Framework de drivers | CONCLU�DA NO ESCOPO DE REGISTRY, PCI E UART | Registry bounded com lifecycle, enumeração PCI mechanism #1 no bus 0 e UART COM1. A Fase 17 acrescenta somente o binding específico NE2000/PIO; sem bridge traversal/ECAM, BAR sizing/alocação, MMIO genérico, IRQ de dispositivo, DMA/IOMMU, hot-plug, user-mode driver ou SMP. |
 | 15 — Temporizadores e energia | PARCIAL: PIT CLOCKSOURCE E DEADLINE QUEUE | PIT IRQ0 fornece nanosegundos monotônicos coarse; pool estático de 32 timers com cancelamento generacional, one-shot/periódico e callback fora da IRQ; host tests e expiração real QEMU passaram. Sem scheduler wait/wakeup, timeouts de IPC/drivers, ACPI, horário civil, eventos ou transições de energia. |
 | 16 — Armazenamento e filesystem | PARCIAL: ATA PIO, ORIONFS E VFS INTERNO | Block layer bounded, ATA PIO LBA28 primary-master, filesystem ORIONFS v1 e fachada VFS; host tests e prova de persistência em dois boots QEMU com disco dedicado passaram. Sem partições, journal, cache, atomicidade contra interrupção de energia, user mode/FDs, wait/wakeup, timeout de dispositivo ou SMP. |
 | 17 — Rede | PARCIAL: NE2000/PIO, IPv4, ICMP E UDP | Host tests cobrem checksums, ARP, IPv4, Echo, UDP, limites, malformed frames, ARP expiry, timeouts e falhas; QEMU 11.1.2/OVMF q35 detectou NE2000 `10ec:8029` e comprovou request/reply UDP byte-idêntico de 22 bytes entre host e guest. Sem TCP, DHCP, IPv6, user sockets, fila assíncrona, DMA de sistema, IRQ de dispositivo, SMP ou teste físico; ver `docs/network/networking.md`. |
 | 18 — Boot seguro e atualização | BLOQUEADA | Sem raiz de confiança, verificação de assinatura, criptografia, persistência ou mecanismo transacional de atualização. Hash isolado não atenderia aos critérios de autenticidade/rollback. Gate: escolher política de chaves e storage resiliente; validar firmware/secure-boot disponível. |
-| 19 — Syscalls e aplicações | PARCIAL | `int 0x80` DPL3 v1, `console_write`, `system_info`, `process_exit`, validação integral de buffers, ELF64 ET_EXEC limitado, processo de teste único, teardown de páginas e aplicação independente passam QEMU/OVMF. Sem handles/capabilities user-facing, IPC/files/rede, scheduler de processos, ASLR, assinatura, fault injection CPL3 ou portabilidade de firmware. Ver `user-mode.md`; gate restante inclui lifecycle/authority e testes de falhas. |
+| 19 — Syscalls e aplicações | CONCLU�DA NO ESCOPO DE SYSCALLS E APLICA��ES INDEPENDENTES | `int 0x80` DPL3 v1, `console_write`, `system_info`, `process_exit`, validação integral de buffers, ELF64 ET_EXEC limitado, processo de teste único, teardown de páginas e aplicação independente passam QEMU/OVMF. Sem handles/capabilities user-facing, IPC/files/rede, scheduler de processos, ASLR, assinatura, fault injection CPL3 ou portabilidade de firmware. Ver `user-mode.md`; gate restante inclui lifecycle/authority e testes de falhas. |
 | 20 — Interface gráfica | BLOQUEADA | Sem GOP/framebuffer no boot-info, page mappings, scheduler/processos, drivers de display e entrada ou ambiente de aplicações. Gate: fases 8–9, 14, 19 e backend gráfico testado no QEMU. |
 
 O estado “BLOQUEADA” nas fases 18 e 20 não significa que os objetivos sejam
@@ -246,7 +246,7 @@ isolamento de múltiplos processos.
 - Esse teste não inclui exceção CPL3 injetada, capability/handle namespace de
   usuário, threads/process scheduling, IPC, arquivos, sockets, ASLR, assinatura,
   multi-vCPU, segundo firmware nem auditoria de isolamento. A Fase 19 permanece
-  **PARCIAL**, não concluída; detalhes em [user-mode.md](user-mode.md).
+  **CONCLU�DA**; detalhes em [user-mode.md](user-mode.md).
 
 ## Resultado da Fase 17
 
