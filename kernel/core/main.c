@@ -5,6 +5,7 @@
 #include "../arch/x86_64/gdt.h"
 #include "../arch/x86_64/idt.h"
 #include "../arch/x86_64/interrupt_state.h"
+#include "../mm/active_page_tables.h"
 #include "../mm/memory_map.h"
 #include "../mm/physical.h"
 #include "log.h"
@@ -48,10 +49,6 @@ void kernel_main(const orion_boot_info *boot_info)
     }
     const bool nx_enabled = orion_x86_64_nx_enabled();
     advance_stage(ORION_INIT_BOOT_INFO_VALID, ORION_INIT_CPU_STATE_VALID);
-    if (!orion_log(ORION_LOG_INFO, "CPU",
-                   "Long mode, paging, PAE, stack and disabled interrupts verified")) {
-        orion_panic_at("CPU", "serial logging failed after CPU state validation");
-    }
     if (!orion_log_u64(ORION_LOG_INFO, "CPU",
                        "NX feature and EFER.NXE enabled:", nx_enabled)) {
         orion_panic_at("CPU", "failed to log NX capability");
@@ -94,6 +91,21 @@ void kernel_main(const orion_boot_info *boot_info)
     if (!orion_log(ORION_LOG_INFO, "MEMORY",
                    "Physical allocate/release smoke test passed")) {
         orion_panic_at("MEMORY", "failed to log physical allocator test");
+    }
+    bool page_table_test_performed = false;
+    if (!orion_x86_64_active_page_tables_smoke_test(
+            boot_info, nx_enabled, &page_table_test_performed)) {
+        orion_panic_at("MEMORY", "active page-table smoke test failed");
+    }
+    if (page_table_test_performed &&
+        !orion_log(ORION_LOG_INFO, "MEMORY",
+                   "Active CR3 map/write/lookup/unmap smoke test passed")) {
+        orion_panic_at("MEMORY", "failed to log active page-table test");
+    }
+    if (!page_table_test_performed &&
+        !orion_log(ORION_LOG_WARN, "MEMORY",
+                   "Active writable non-executable map test skipped: NX unavailable")) {
+        orion_panic_at("MEMORY", "failed to log skipped page-table test");
     }
     if (!orion_log_u64(ORION_LOG_INFO, "MEMORY",
                        "Validated UEFI memory descriptors:",

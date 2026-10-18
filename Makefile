@@ -26,7 +26,7 @@ KERNEL_OBJECTS := $(BUILD)/entry.o $(BUILD)/main.o $(BUILD)/serial.o \
 	$(BUILD)/log.o $(BUILD)/panic.o $(BUILD)/cpu_state.o $(BUILD)/fatal.o \
 	$(BUILD)/gdt.o $(BUILD)/idt.o $(BUILD)/interrupts.o \
 	$(BUILD)/interrupt_state.o $(BUILD)/exceptions.o $(BUILD)/memory_map.o \
-	$(BUILD)/physical.o $(BUILD)/page_tables.o
+	$(BUILD)/physical.o $(BUILD)/page_tables.o $(BUILD)/active_page_tables.o
 
 .PHONY: all check-tools build run test-boot test-panic-qemu test-exceptions-qemu test-unit toolchain-test validate-docs clean inspect
 
@@ -93,10 +93,17 @@ $(BUILD)/page_tables.o: kernel/mm/page_tables.c kernel/mm/page_tables.h \
 	| $(BUILD)/.dir
 	$(CLANG) $(KERNEL_CFLAGS) -c $< -o $@
 
+$(BUILD)/active_page_tables.o: kernel/mm/active_page_tables.c \
+	kernel/mm/active_page_tables.h kernel/mm/page_tables.h \
+	kernel/mm/memory_map.h kernel/mm/physical.h \
+	kernel/arch/x86_64/cpu_state.h | $(BUILD)/.dir
+	$(CLANG) $(KERNEL_CFLAGS) -c $< -o $@
+
 $(BUILD)/main.o: kernel/core/main.c include/orion/boot_info.h include/orion/init_state.h \
 	kernel/arch/x86_64/cpu_state.h kernel/arch/x86_64/gdt.h \
 	kernel/arch/x86_64/idt.h kernel/arch/x86_64/interrupt_state.h \
-	kernel/mm/memory_map.h kernel/mm/physical.h kernel/log/log.h \
+	kernel/mm/active_page_tables.h kernel/mm/memory_map.h \
+	kernel/mm/physical.h kernel/log/log.h \
 	kernel/panic/panic.h kernel/console/serial.h | $(BUILD)/.dir
 	$(CLANG) $(KERNEL_CFLAGS) -c $< -o $@
 

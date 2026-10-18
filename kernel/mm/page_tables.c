@@ -97,6 +97,7 @@ static bool resolve_child(orion_page_table_space *space, uint64_t entry,
         entry & ORION_X86_64_PAGE_TABLE_PHYS_MASK
     };
     return (entry & PTE_PRESENT) != 0 && (entry & PTE_HUGE) == 0 &&
+           physical.value < PHYSICAL_ADDRESS_LIMIT &&
            space->ops.resolve_table(space->ops.context, physical, child) &&
            *child != NULL &&
            ((uintptr_t)*child & (uintptr_t)PAGE_OFFSET_MASK) == 0;
@@ -191,6 +192,12 @@ bool orion_x86_64_page_map(orion_page_table_space *space,
                                  allocated_virtual, allocated_count);
             return false;
         }
+        if ((flags & ORION_VM_EXECUTE) != 0 &&
+            (entry & PTE_NO_EXECUTE) != 0) {
+            rollback_allocations(space, parents, allocated_physical,
+                                 allocated_virtual, allocated_count);
+            return false;
+        }
         promoted_parents[promoted_count++] = &table[index];
         table = NULL;
         if (!resolve_child(space, entry, &table)) {
@@ -226,12 +233,8 @@ bool orion_x86_64_page_map(orion_page_table_space *space,
         leaf |= PTE_NO_EXECUTE;
     }
     table[leaf_index] = leaf;
-    const uint64_t parent_clear = (flags & ORION_VM_EXECUTE) != 0
-                                      ? PTE_NO_EXECUTE
-                                      : 0;
     for (uint32_t index = 0; index < promoted_count; ++index) {
-        *promoted_parents[index] =
-            (*promoted_parents[index] | parent_permissions) & ~parent_clear;
+        *promoted_parents[index] |= parent_permissions;
     }
     space->ops.invalidate_page(space->ops.context, virtual_address);
     return true;
@@ -252,6 +255,7 @@ static bool lookup_leaf(orion_page_table_space *space,
     uint64_t effective_permissions =
         PTE_PRESENT | PTE_WRITABLE | PTE_USER;
     uint64_t effective_execute = 0;
+    uint64_t effective_cache = 0;
     static const unsigned int shifts[] = {39U, 30U, 21U};
     for (uint32_t level = 0; level < 3; ++level) {
         const uint64_t entry = table[page_index(virtual_address.value,
@@ -261,6 +265,7 @@ static bool lookup_leaf(orion_page_table_space *space,
         }
         effective_permissions &= entry;
         effective_execute |= entry & PTE_NO_EXECUTE;
+        effective_cache |= entry & (PTE_WRITE_THROUGH | PTE_CACHE_DISABLE);
     }
     *leaf_entry = &table[page_index(virtual_address.value, 12U)];
     if ((**leaf_entry & PTE_PRESENT) == 0) {
@@ -268,11 +273,12 @@ static bool lookup_leaf(orion_page_table_space *space,
     }
     effective_permissions &= **leaf_entry;
     effective_execute |= **leaf_entry & PTE_NO_EXECUTE;
+    effective_cache |=
+        **leaf_entry & (PTE_WRITE_THROUGH | PTE_CACHE_DISABLE);
     *effective_entry = (effective_permissions & (PTE_PRESENT | PTE_WRITABLE |
                                                   PTE_USER)) |
                        effective_execute |
-                       (**leaf_entry & (PTE_WRITE_THROUGH |
-                                        PTE_CACHE_DISABLE)) |
+                       effective_cache |
                        (**leaf_entry & ORION_X86_64_PAGE_TABLE_PHYS_MASK);
     return true;
 }

@@ -24,6 +24,7 @@ static void bitmap_set(uint8_t *bitmap, uint64_t page, bool value)
 
 bool orion_physical_init(const orion_boot_info *boot_info)
 {
+    allocator_initialized = false;
     orion_memory_map_summary summary;
     if (!orion_memory_map_validate(boot_info, &summary)) {
         allocator_initialized = false;
@@ -59,6 +60,9 @@ bool orion_physical_init(const orion_boot_info *boot_info)
             descriptor.physical_start / ORION_MEMORY_PAGE_SIZE;
         const uint64_t end_page = end / ORION_MEMORY_PAGE_SIZE;
         for (uint64_t page = first_page; page < end_page; ++page) {
+            if (page == 0) {
+                continue;
+            }
             if (!bitmap_get(available_bitmap, page)) {
                 bitmap_set(available_bitmap, page, true);
                 --allocator_stats.reserved_pages;
@@ -119,6 +123,19 @@ bool orion_physical_release(uint64_t physical_address)
     --allocator_stats.allocated_pages;
     ++allocator_stats.free_pages;
     return true;
+}
+
+bool orion_physical_is_allocated(uint64_t physical_address)
+{
+    if (!allocator_initialized ||
+        (physical_address & (ORION_MEMORY_PAGE_SIZE - 1U)) != 0 ||
+        physical_address >= ORION_PHYSICAL_MAX_ADDRESS) {
+        return false;
+    }
+
+    const uint64_t page = physical_address / ORION_MEMORY_PAGE_SIZE;
+    return bitmap_get(allocated_bitmap, page) &&
+           !bitmap_get(available_bitmap, page);
 }
 
 bool orion_physical_get_stats(orion_physical_stats *stats)

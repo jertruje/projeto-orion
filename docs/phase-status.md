@@ -7,10 +7,10 @@ ser consideradas concluídas nos escopos limitados descritos abaixo; as Fases
 
 ## Evidência observada no workspace
 
-- O workspace inicialmente não continha `.git`; continha o prompt
-  `projeto orion.txt`. O prompt foi preservado.
-- O repositório foi inicializado na branch `master`, sem commits; os arquivos
-  existentes permanecem untracked.
+- Na inspeção inicial, o workspace não continha `.git`; continha o prompt
+  `projeto orion.txt`, que foi preservado. O repositório está agora na branch
+  `master`, com `HEAD` em `17e1093`. Esta execução não cria commit; as
+  atualizações documentais finais permanecem no worktree.
 - Foi instalado MSYS2 portátil em
   `%LOCALAPPDATA%\orion-msys64\msys64`. O ambiente possui Clang/LLVM/LLD,
   binutils, NASM, GDB, QEMU/EDK2, GNU Make e GNU-EFI. A versão gravada
@@ -129,8 +129,10 @@ mingw32-make test-unit build inspect test-boot test-panic-qemu test-exceptions-q
   do CR3 ativo.
 
 git init
-  Resultado: repositório criado em C:\Users\danim\Downloads\projeto orion\.git;
-  branch inicial master, sem commits; arquivos existentes aparecem como untracked.
+  Resultado na inspeção inicial: repositório criado em
+  C:\Users\danim\Downloads\projeto orion\.git; branch inicial master, sem
+  commits; arquivos existentes apareciam como untracked. Estado posterior:
+  HEAD 17e1093, sem commit criado nesta execução.
 ```
 
 As verificações acima refletem o estado pós-alteração. Build e testes devem

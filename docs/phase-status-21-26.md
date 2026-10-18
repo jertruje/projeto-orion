@@ -44,7 +44,8 @@ gerenciador, benchmark, release ou interface fictícios foram adicionados.
   revisado.
 - Gaps de segurança, não achados de vulnerabilidade: imagem do kernel não é
   autenticada criptograficamente; Secure Boot/anti-rollback não foram
-  configurados; o kernel não tem isolamento ou memory manager próprios.
+  configurados; existe PMM limitado e gerenciador de page tables não integrado
+  ao CR3, sem isolamento de usuário.
   GDT/TSS/IDT e handlers de exceções CPU foram adicionados após essa revisão;
   IRQs externos e transições de privilégio continuam ausentes.
 - Limite: resultado negativo numa revisão do scaffold não prova ausência de
@@ -76,9 +77,10 @@ Resultados observados:
   dinâmica de segurança do sistema completo.
 - O teste QEMU encerrou a instância após o intervalo de observação de 15 s.
   Isso não é teste de estabilidade prolongada nem de um dos subsistemas 21–26.
-- `git rev-parse --short HEAD` não produziu revisão: repositório sem commits.
-  Hashes dos binários de desenvolvimento não foram promovidos a hashes de
-  release.
+- Na auditoria original, `git rev-parse --short HEAD` não produziu revisão.
+  O estado atual tem `HEAD` 17e1093, mas isso não representa um pacote de
+  lançamento nem aprovação de RC. Hashes dos binários de desenvolvimento não
+  foram promovidos a hashes de release.
 
 ## Alterações deste lote
 

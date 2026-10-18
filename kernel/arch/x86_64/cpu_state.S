@@ -22,6 +22,8 @@ orion_x86_64_validate_entry_state:
     movq %cr4, %rax
     btq $5, %rax
     jnc .Linvalid_entry_state
+    btq $12, %rax
+    jc .Linvalid_entry_state
 
     movl $0xc0000080, %ecx
     rdmsr
@@ -72,3 +74,20 @@ orion_x86_64_nx_enabled:
     ret
 
 .size orion_x86_64_nx_enabled, .-orion_x86_64_nx_enabled
+
+.global orion_x86_64_read_cr3
+.type orion_x86_64_read_cr3,@function
+orion_x86_64_read_cr3:
+    movq %cr3, %rax
+    ret
+.size orion_x86_64_read_cr3, .-orion_x86_64_read_cr3
+
+.global orion_x86_64_uses_four_level_paging
+.type orion_x86_64_uses_four_level_paging,@function
+orion_x86_64_uses_four_level_paging:
+    movq %cr4, %rax
+    btq $12, %rax
+    setnc %al
+    movzbq %al, %rax
+    ret
+.size orion_x86_64_uses_four_level_paging, .-orion_x86_64_uses_four_level_paging

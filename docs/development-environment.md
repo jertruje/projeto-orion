@@ -8,9 +8,10 @@ invokes Windows PowerShell scripts for tool checks and QEMU harnesses; Clang,
 LLD, NASM and QEMU are native UCRT64 executables. The build is not running in
 WSL and does not require Linux commands.
 
-The Git repository exists on branch `master` but has no commits; existing
-project content is untracked. Do not assume a clean checkout or a recorded
-history. `.gitignore` ignores generated `build/` outputs only.
+The Git repository is on branch `master`, with `HEAD` at `17e1093` in the
+latest observed state. At initial inspection it had no commits and the project
+content was untracked. `.gitignore` ignores generated `build/` outputs only;
+the current worktree may contain local changes.
 
 ## Available tools observed
 

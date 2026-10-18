@@ -3,14 +3,14 @@
 #include <limits.h>
 
 static bool ranges_overlap(uint64_t left_start, uint64_t left_end,
-                           uint64_t right_start, uint64_t right_end)
+                            uint64_t right_start, uint64_t right_end)
 {
     return left_start < right_end && right_start < left_end;
 }
 
 bool orion_memory_map_descriptor(const orion_boot_info *boot_info,
-                                 uint32_t index,
-                                 orion_uefi_memory_descriptor *descriptor)
+                                  uint32_t index,
+                                  orion_uefi_memory_descriptor *descriptor)
 {
     if (!orion_boot_info_is_valid(boot_info) || descriptor == NULL ||
         boot_info->descriptor_size <
@@ -36,7 +36,7 @@ bool orion_memory_map_descriptor(const orion_boot_info *boot_info,
 }
 
 bool orion_memory_map_validate(const orion_boot_info *boot_info,
-                               orion_memory_map_summary *summary)
+                                orion_memory_map_summary *summary)
 {
     if (!orion_boot_info_is_valid(boot_info) ||
         boot_info->descriptor_size < sizeof(orion_uefi_memory_descriptor) ||
@@ -101,4 +101,33 @@ bool orion_memory_map_validate(const orion_boot_info *boot_info,
         *summary = result;
     }
     return result.conventional_page_count_below_limit != 0;
+}
+
+bool orion_memory_map_range_is_reserved(const orion_boot_info *boot_info,
+                                        uint64_t physical_start,
+                                        uint64_t size)
+{
+    orion_memory_map_summary summary;
+    if (size == 0 || physical_start >= ORION_MEMORY_PHYSICAL_LIMIT ||
+        size > UINT64_MAX - physical_start ||
+        physical_start + size > ORION_MEMORY_PHYSICAL_LIMIT ||
+        !orion_memory_map_validate(boot_info, &summary)) {
+        return false;
+    }
+
+    const uint64_t range_end = physical_start + size;
+    for (uint32_t index = 0; index < summary.descriptor_count; ++index) {
+        orion_uefi_memory_descriptor descriptor;
+        if (!orion_memory_map_descriptor(boot_info, index, &descriptor)) {
+            return false;
+        }
+        const uint64_t descriptor_end =
+            descriptor.physical_start +
+            descriptor.number_of_pages * ORION_MEMORY_PAGE_SIZE;
+        if (physical_start >= descriptor.physical_start &&
+            range_end <= descriptor_end) {
+            return descriptor.type != ORION_UEFI_MEMORY_TYPE_CONVENTIONAL;
+        }
+    }
+    return false;
 }

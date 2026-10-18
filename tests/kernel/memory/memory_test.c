@@ -50,6 +50,14 @@ int main(void)
     failures += check(summary.conventional_descriptor_count == 2);
     failures += check(summary.conventional_page_count_below_limit == 6);
     failures += check(summary.maximum_physical_end == UINT64_C(0x202000));
+    failures += check(orion_memory_map_range_is_reserved(
+        &boot_info, UINT64_C(0x104000), ORION_MEMORY_PAGE_SIZE));
+    failures += check(!orion_memory_map_range_is_reserved(
+        &boot_info, UINT64_C(0x100000), ORION_MEMORY_PAGE_SIZE));
+    failures += check(!orion_memory_map_range_is_reserved(
+        &boot_info, UINT64_C(0x103000), 2U * ORION_MEMORY_PAGE_SIZE));
+    failures += check(!orion_memory_map_range_is_reserved(
+        &boot_info, UINT64_C(0x104000), 0));
     orion_uefi_memory_descriptor descriptor;
     failures += check(!orion_memory_map_descriptor(&boot_info, 3, &descriptor));
 
