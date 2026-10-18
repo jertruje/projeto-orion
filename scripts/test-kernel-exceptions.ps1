@@ -13,6 +13,7 @@ $cases = @(
         Image = (Join-Path $BuildDirectory 'gp-test-kernel.elf')
         Expected = @(
             '[ORION][UEFI][INFO] kernel ELF validated',
+            '[ORION][EXCEPTION][ERROR] Structured fault event ID 1',
             '[ORION][EXCEPTION][ERROR] CPU exception vector 13',
             '[ORION][EXCEPTION][ERROR] CPU error code 1034',
             '[ORION][EXCEPTION][ERROR] fatal CPU exception'
@@ -22,6 +23,7 @@ $cases = @(
         Image = (Join-Path $BuildDirectory 'ud-test-kernel.elf')
         Expected = @(
             '[ORION][UEFI][INFO] kernel ELF validated',
+            '[ORION][EXCEPTION][ERROR] Structured fault event ID 1',
             '[ORION][EXCEPTION][ERROR] CPU exception vector 6',
             '[ORION][EXCEPTION][ERROR] CPU error code 0',
             '[ORION][EXCEPTION][ERROR] fatal CPU exception'
@@ -31,6 +33,7 @@ $cases = @(
         Image = (Join-Path $BuildDirectory 'df-test-kernel.elf')
         Expected = @(
             '[ORION][UEFI][INFO] kernel ELF validated',
+            '[ORION][EXCEPTION][ERROR] Structured fault event ID 1',
             '[ORION][EXCEPTION][ERROR] CPU exception vector 8',
             '[ORION][EXCEPTION][ERROR] CPU error code 0',
             '[ORION][EXCEPTION][ERROR] fatal CPU exception'
@@ -40,6 +43,7 @@ $cases = @(
         Image = (Join-Path $BuildDirectory 'pf-test-kernel.elf')
         Expected = @(
             '[ORION][UEFI][INFO] kernel ELF validated',
+            '[ORION][EXCEPTION][ERROR] Structured fault event ID 1',
             '[ORION][EXCEPTION][ERROR] CPU exception vector 14',
             '[ORION][EXCEPTION][ERROR] CPU error code 0',
             '[ORION][EXCEPTION][ERROR] Page fault CR2 140737488351232',
@@ -55,6 +59,7 @@ $cases = @(
         Image = (Join-Path $BuildDirectory 'de-test-kernel.elf')
         Expected = @(
             '[ORION][UEFI][INFO] kernel ELF validated',
+            '[ORION][EXCEPTION][ERROR] Structured fault event ID 1',
             '[ORION][EXCEPTION][ERROR] CPU exception vector 0',
             '[ORION][EXCEPTION][ERROR] CPU error code 0',
             '[ORION][EXCEPTION][ERROR] fatal CPU exception'
@@ -64,6 +69,7 @@ $cases = @(
         Image = (Join-Path $BuildDirectory 'readonly-test-kernel.elf')
         Expected = @(
             '[ORION][UEFI][INFO] kernel ELF validated',
+            '[ORION][EXCEPTION][ERROR] Structured fault event ID 1',
             '[ORION][EXCEPTION][ERROR] CPU exception vector 14',
             '[ORION][EXCEPTION][ERROR] CPU error code 3',
             '[ORION][EXCEPTION][ERROR] Page fault: protection violation 1',
@@ -77,6 +83,7 @@ $cases = @(
         Image = (Join-Path $BuildDirectory 'nx-test-kernel.elf')
         Expected = @(
             '[ORION][UEFI][INFO] kernel ELF validated',
+            '[ORION][EXCEPTION][ERROR] Structured fault event ID 1',
             '[ORION][EXCEPTION][ERROR] CPU exception vector 14',
             '[ORION][EXCEPTION][ERROR] CPU error code 17',
             '[ORION][EXCEPTION][ERROR] Page fault: protection violation 1',

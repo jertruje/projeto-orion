@@ -14,6 +14,7 @@ substitui dados de teste.
 | ADR-0006 | Aceita para bring-up | Boot-info versionado, boot services encerrados antes da entrada do kernel. | Reduz dependência de firmware no kernel e permite um contrato observável. | Atualizar versão se mudar layout; documentar campos/reservas; validar parser e lifetime do mapa. |
 | ADR-0007 | Aceita para bring-up | Build de desenvolvimento mantém mensagens seriais; teste QEMU observa eventos do boot. | Diagnóstico simples sem libc/GUI. | Mensagens não equivalem a métricas; saída serial não é concorrente-safe. |
 | ADR-0008 | Proposta | Manter interrupts/preemption/SMP desativados até seus pré-requisitos serem testados. | Evita habilitar caminhos incompletos sem IDT/controlador/context switch. | Fases 7–10 precisam demonstrar cada transição antes de ativar. |
+| ADR-0024 | Parcialmente aceita | Registrar falhas em ring estático bounded; falhas críticas continuam fail-stop. | Captura diagnóstico sem heap/locks, mas ausência de processos isolados impede contenção/restart segura. | Host e QEMU validam registro; supervisão, recuperação e SMP permanecem pendentes. |
 
 | ADR-0009 | Aceita como arquitetura-base | Microkernel mínimo com capabilities para autoridade; serviços/drivers em user mode por padrão. | Alinha placement aos requisitos de contenção; trade-offs e lacunas de pesquisa explícitos. | Não prova segurança/desempenho; revisar com testes/medições de IPC, isolamento e recuperação. |
 | ADR-0010 | Aceita como baseline | IPC síncrono request/reply, copiado, limitado e com quotas para controle. | Ownership simples para primeira implementação; shared memory adiada até necessidade medida. | Medir p50/p95/p99, throughput, jitter e CPU/op; limites definidos no gate de implementação. |
@@ -588,3 +589,31 @@ de dados de hardware/workload permanecem parametrizadas e têm gates explícitos
   quotas, teardown de processos e sincronização apropriada antes de alegar
   isolamento; executar testes negativos em Ring 3 e stress/race tests quando
   SMP for introduzido.
+
+### ADR-0024 — Ring estático de diagnóstico e política fail-stop (ACEITA PARA FASE 13 PARCIAL)
+
+- **Contexto/problema:** exceções CPU e panic tinham somente mensagens seriais;
+  o kernel não dispõe de processos de usuário ou serviços isolados que possam
+  ser recuperados com segurança.
+- **Alternativas consideradas:** alocar memória dinamicamente no handler;
+  tentar retomar após qualquer exceção; registrar eventos em buffer estático e
+  manter fail-stop para falhas críticas.
+- **Evidências:** testes host cobrem campos, capacidade e overwrite; imagens
+  QEMU testam #DE/#UD/#GP/#DF/#PF/RO/NX e o caminho de panic. A suíte não
+  demonstra recuperação de serviços.
+- **Decisão:** usar ring volátil de 32 registros, sem heap, com IDs
+  monotônicos, validação de enumeração, overwrite explícito e serialização
+  single-core por salvar/desabilitar/restaurar IF. #BP continua; as demais
+  exceções CPU registradas seguem para panic; panic registra best-effort e
+  nunca retorna.
+- **Consequências positivas:** eventos estruturados consultáveis e limitados
+  estão disponíveis sem alocação em contexto crítico.
+- **Consequências negativas:** eventos são perdidos no reboot e os mais
+  antigos são descartados na saturação; não existe contenção/restart de
+  processos, nem sincronização SMP.
+- **Riscos residuais:** falha da UART/stack/CPU pode impedir diagnóstico;
+  registro não prova recuperação ou integridade; caminhos sem integração
+  central podem não aparecer no ring.
+- **Critérios de revisão:** adicionar lifecycle de processos, Ring 3,
+  revogação/teardown IPC e supervisor independente antes de restart; testar
+  contenção e loop de falha em QEMU antes de aprovar a fase.

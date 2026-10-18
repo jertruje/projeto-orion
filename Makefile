@@ -24,6 +24,7 @@ KERNEL_CFLAGS := --target=x86_64-elf -Iinclude -Ikernel/console -Ikernel/log \
 	-mcmodel=small -g
 KERNEL_OBJECTS := $(BUILD)/entry.o $(BUILD)/main.o $(BUILD)/serial.o \
 	$(BUILD)/log.o $(BUILD)/panic.o $(BUILD)/cpu_state.o $(BUILD)/fatal.o \
+	$(BUILD)/fault-report.o \
 	$(BUILD)/gdt.o $(BUILD)/idt.o $(BUILD)/interrupts.o \
 	$(BUILD)/interrupt_state.o $(BUILD)/exceptions.o $(BUILD)/memory_map.o \
 	$(BUILD)/physical.o $(BUILD)/page_tables.o $(BUILD)/active_page_tables.o \
@@ -32,7 +33,8 @@ KERNEL_OBJECTS := $(BUILD)/entry.o $(BUILD)/main.o $(BUILD)/serial.o \
 	$(BUILD)/ipc-channel.o
 KERNEL_TASKING_OBJECTS := $(BUILD)/context_switch.o $(BUILD)/process.o \
 	$(BUILD)/thread.o $(BUILD)/scheduler.o $(BUILD)/timer.o \
-	$(BUILD)/interrupt_state.o $(BUILD)/capability.o $(BUILD)/ipc-channel.o
+	$(BUILD)/interrupt_state.o $(BUILD)/capability.o $(BUILD)/ipc-channel.o \
+	$(BUILD)/fault-report.o
 
 .PHONY: all check-tools build run test-boot test-tasking-qemu test-panic-qemu \
 	test-exceptions-qemu test-preemption-qemu test-unit toolchain-test \
@@ -68,6 +70,10 @@ $(BUILD)/cpu_state.o: kernel/arch/x86_64/cpu_state.S | $(BUILD)/.dir
 	$(CLANG) $(KERNEL_CFLAGS) -c $< -o $@
 
 $(BUILD)/fatal.o: kernel/arch/x86_64/fatal.S | $(BUILD)/.dir
+	$(CLANG) $(KERNEL_CFLAGS) -c $< -o $@
+
+$(BUILD)/fault-report.o: kernel/fault/report.c kernel/fault/report.h \
+	kernel/arch/x86_64/interrupt_state.h | $(BUILD)/.dir
 	$(CLANG) $(KERNEL_CFLAGS) -c $< -o $@
 
 $(BUILD)/gdt.o: kernel/arch/x86_64/gdt.c kernel/arch/x86_64/gdt.h \
@@ -213,9 +219,19 @@ $(BUILD)/kernel-log-test.exe: tests/kernel/log_test.c kernel/log/log.c \
 		tests/kernel/log_test.c kernel/log/log.c -o $@
 
 $(BUILD)/kernel-panic-test.exe: tests/kernel/panic_test.c kernel/panic/panic.c \
-	kernel/panic/panic.h kernel/arch/x86_64/fatal.h kernel/log/log.h | $(BUILD)/.dir
+	kernel/panic/panic.h kernel/arch/x86_64/fatal.h kernel/log/log.h \
+	kernel/fault/report.c kernel/fault/report.h \
+	kernel/arch/x86_64/interrupt_state.h | $(BUILD)/.dir
 	$(CLANG) -std=c11 -Wall -Wextra -Werror -Ikernel/log -Ikernel/panic \
-		tests/kernel/panic_test.c kernel/panic/panic.c -o $@
+		-Ikernel/fault -Ikernel/arch/x86_64 tests/kernel/panic_test.c \
+		kernel/panic/panic.c kernel/fault/report.c -o $@
+
+$(BUILD)/kernel-fault-test.exe: tests/kernel/fault/fault_test.c \
+	kernel/fault/report.c kernel/fault/report.h \
+	kernel/arch/x86_64/interrupt_state.h | $(BUILD)/.dir
+	$(CLANG) -std=c11 -Wall -Wextra -Werror -Ikernel/fault \
+		-Ikernel/arch/x86_64 tests/kernel/fault/fault_test.c \
+		kernel/fault/report.c -o $@
 
 $(BUILD)/kernel-memory-test.exe: tests/kernel/memory/memory_test.c \
 	kernel/mm/memory_map.c kernel/mm/memory_map.h kernel/mm/physical.c \
@@ -350,7 +366,7 @@ $(BUILD)/readonly-test-kernel.elf: $(filter-out $(BUILD)/active_page_tables.o,$(
 test-unit: $(BUILD)/boot-info-test.exe $(BUILD)/kernel-log-test.exe \
 	$(BUILD)/kernel-panic-test.exe $(BUILD)/kernel-memory-test.exe \
 	$(BUILD)/page-tables-test.exe $(BUILD)/kernel-task-test.exe \
-	$(BUILD)/kernel-ipc-test.exe
+	$(BUILD)/kernel-ipc-test.exe $(BUILD)/kernel-fault-test.exe
 	@powershell.exe -NoProfile -ExecutionPolicy Bypass -File scripts/test-kernel-unit.ps1 \
 		-BuildDirectory "$(BUILD)"
 

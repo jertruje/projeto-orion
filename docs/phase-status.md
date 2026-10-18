@@ -64,6 +64,7 @@ integralmente ao gate de segurança.
 | 10 — Timer, preempção e multicore | CONCLUÍDA NO ESCOPO DE PREEMPÇÃO SINGLE-CORE; MULTICORE BLOQUEADO | PIT channel 0 + PIC IRQ0, vector IDT 32, EOI antes de scheduling, IF-safe queue updates e FIFO preemptivo; QEMU `-smp 1` prova workers CPU-bound sem yield, contexto/stack, fila vazia e métricas TSC/ticks. Sem AP startup, SMP synchronization, APIC/IOAPIC ou hardware físico testado. |
 | 11 — Capabilities e isolamento | PARCIAL, TESTADA NO ESCOPO INTERNO DO KERNEL | Tabelas bounded por processo/objeto/slot/lease; handles locais com gerações; type/right checks; derivação e transferência em subset; revogação global e destruição adiada por lease. Host tests e self-test QEMU passam. Sem Ring 3, address spaces independentes, syscalls, device/memory mediation ou SMP; isolamento efetivo pendente. |
 | 12 — IPC | PARCIAL, TESTADO PARA THREADS DO KERNEL | Canais full-duplex limitados, filas FIFO copiadas e capabilities SEND/RECEIVE/QUERY/CLOSE; host negatives e troca real entre duas kernel threads em QEMU. Não há bloqueio/despertar, IPC Ring 3, transferência de capabilities em mensagens, cleanup de processo ou SMP. |
+| 13 — Supervisor de falhas | PARCIAL: DIAGNÓSTICOS E PANIC ESTRUTURADOS | Ring bounded de 32 eventos integrado a exceções CPU e panic; testes host e asserts QEMU de vetores. Sem processos/serviços isolados, containment de aplicação, restart, teardown IPC ou recuperação de falha de kernel. |
 
 ## Comandos de build e teste
 
@@ -429,5 +430,27 @@ DE PROCESSOS OU SEGURANÇA COMPLETA.
 - Não foram testados user buffers, processos independentes, bloqueio/
   despertamento, transferência de capabilities dentro de mensagens,
   concorrência SMP ou desempenho.
-- Fase 13 depende de lifecycle de processo/serviço e supervisor; canal fechado
-  gera erro explícito, mas não reinicia componentes nem garante recuperação.
+
+## Relatório da Fase 13
+
+**Estado:** PARCIALMENTE IMPLEMENTADA; DIAGNÓSTICO TESTADO, SUPERVISÃO E
+RECUPERAÇÃO NÃO IMPLEMENTADAS.
+
+- `kernel/fault/report.*` implementa ring volátil de 32 eventos sem heap,
+  identificadores monotônicos, validação de campos, consulta por ID e contador
+  de sobrescritas. A proteção por IF é válida apenas para o kernel single-core.
+- Exceções CPU registram vetor, código de erro, RIP, CPL/contexto, identidade
+  kernel conhecida e CR2 para #PF. #BP continua; outras exceções tratadas
+  seguem para panic. Panic registra um segundo evento com ação HALT e resultado
+  NOT_ATTEMPTED antes do logger e halt existentes.
+- `mingw32-make test-unit build inspect` passou. Os testes host verificam
+  campos, IDs, argumentos/enums inválidos, consulta, capacidade, sobrescrita,
+  restauração de IF e classificação do panic.
+- `mingw32-make test-panic-qemu test-exceptions-qemu test-boot
+  test-tasking-qemu test-preemption-qemu` passou. QEMU confirmou IDs de
+  relatório para #DE/#UD/#GP/#DF/#PF/RO/NX, evento de panic, breakpoint
+  retornável, boot normal, tasking e preempção single-core.
+- `mingw32-make validate-docs` e `git diff --check` passaram.
+- Não há recuperação de processo ou serviço, supervisor independente,
+  política de restart/backoff, teardown de IPC por saída, Ring 3, isolamento
+  entre processos, SMP, logging durável ou recuperação de corrupção do kernel.

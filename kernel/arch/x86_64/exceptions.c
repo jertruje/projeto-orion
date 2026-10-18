@@ -1,11 +1,15 @@
 #include "idt.h"
 
+#include <stddef.h>
 #include <stdint.h>
 
 #include "cpu_state.h"
 #include "timer.h"
+#include "../../fault/report.h"
 #include "../../log/log.h"
 #include "../../panic/panic.h"
+#include "../../task/scheduler.h"
+#include "../../task/thread.h"
 
 void orion_x86_64_exception_dispatch(orion_x86_64_exception_frame *frame)
 {
@@ -20,13 +24,53 @@ void orion_x86_64_exception_dispatch(orion_x86_64_exception_frame *frame)
         orion_panic_at("EXCEPTION", "unexpected external interrupt");
     }
 
+    const bool from_user = (frame->cs & UINT64_C(3)) != 0;
+    orion_thread *thread = from_user ? NULL : orion_scheduler_current();
+    orion_process *process =
+        thread != NULL && orion_thread_is_managed(thread)
+            ? orion_process_kernel()
+            : NULL;
+    uintptr_t fault_address = 0;
+    if (frame->vector == 14U) {
+        __asm__ volatile("mov %%cr2, %0" : "=r"(fault_address));
+    }
+    orion_fault_record fault = {
+        .instruction_pointer = frame->rip,
+        .process_id = process != NULL && thread->process == process
+                          ? process->id
+                          : 0,
+        .thread_id = process != NULL && thread->process == process
+                         ? thread->id
+                         : 0,
+        .error_code = frame->error_code,
+        .address = fault_address,
+        .vector = (uint32_t)frame->vector,
+        .category = ORION_FAULT_CPU_EXCEPTION,
+        .context = from_user ? ORION_FAULT_CONTEXT_USER
+                             : ORION_FAULT_CONTEXT_KERNEL_INTERRUPT,
+        .action = frame->vector == 3U ? ORION_FAULT_ACTION_CONTINUE
+                                      : ORION_FAULT_ACTION_HALT_KERNEL,
+        .recovery_result = frame->vector == 3U
+                               ? ORION_FAULT_RECOVERY_SUCCEEDED
+                               : ORION_FAULT_RECOVERY_NOT_ATTEMPTED
+    };
+    uint64_t event_id = 0;
+    if (orion_fault_report_record(&fault, &event_id) ==
+        ORION_FAULT_STATUS_OK) {
+        (void)orion_log_u64(ORION_LOG_ERROR, "EXCEPTION",
+                            "Structured fault event ID", event_id);
+        (void)orion_log_u64(ORION_LOG_ERROR, "EXCEPTION",
+                            "Fault instruction pointer", frame->rip);
+    } else {
+        (void)orion_log(ORION_LOG_ERROR, "EXCEPTION",
+                        "Structured fault report unavailable");
+    }
+
     (void)orion_log_u64(ORION_LOG_ERROR, "EXCEPTION", "CPU exception vector",
                         frame->vector);
     (void)orion_log_u64(ORION_LOG_ERROR, "EXCEPTION", "CPU error code",
                         frame->error_code);
     if (frame->vector == 14U) {
-        uintptr_t fault_address;
-        __asm__ volatile("mov %%cr2, %0" : "=r"(fault_address));
         (void)orion_log_u64(ORION_LOG_ERROR, "EXCEPTION", "Page fault CR2",
                             fault_address);
         (void)orion_log_u64(ORION_LOG_ERROR, "EXCEPTION",

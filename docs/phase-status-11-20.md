@@ -3,9 +3,9 @@
 **Interpretação do lote:** “2” corresponde às fases 11–20, conforme o esquema
 combinado.  
 **Resultado atual:** Fase 11 parcial; Fase 12 parcialmente implementada para
-threads do kernel; fases 13–20 continuam bloqueadas por pré-requisitos
-técnicos. Nenhum subsistema futuro foi simulado nem declarado funcional sem
-evidência.
+threads do kernel; Fase 13 parcial em diagnóstico de falhas, sem supervisor ou
+recuperação de serviços; fases 14–20 bloqueadas por pré-requisitos técnicos.
+Nenhum subsistema futuro foi simulado nem declarado funcional sem evidência.
 
 ## Estado atual após revalidação
 
@@ -34,7 +34,7 @@ as fases não podem avançar com segurança:
 |---|---|---|
 | 11 — Capacidades e isolamento | PARCIAL | Host negatives e QEMU startup self-test validam API interna e lifecycle básico. Gate de isolamento efetivo permanece aberto: Ring 3, roots independentes, syscalls, teardown integrado de processos, APIs reais de objetos e sincronização SMP ausentes. |
 | 12 — IPC | PARCIAL | Canais FIFO full-duplex, limitados e capability-protected; host negativos e tráfego entre duas kernel threads no QEMU. Sem wait/wakeup, caller user buffers, IPC de aplicações, cleanup de process exit ou SMP. |
-| 13 — Supervisor de falhas | BLOQUEADA | Threads podem terminar cooperativamente, mas não há processos/serviços isolados, IPC ou supervisor. Panic do kernel não é contenção nem recuperação de serviço. Gate: fases 9, 11 e 12, além de supervisão de serviços. |
+| 13 — Supervisor de falhas | PARCIAL: REGISTRO E POLÍTICA FAIL-STOP | Ring bounded e estático registra exceções CPU e panic; #BP retoma e as demais exceções testadas seguem para halt. Não há processos/serviços isolados, contenção de aplicação, restart, teardown IPC ou recuperação do kernel. Supervisor permanece bloqueado até lifecycle de processo/serviço e IPC seguro. |
 | 14 — Framework de drivers | BLOQUEADA | Há PMM, mapeamento ativo e timer legado de scheduler; faltam roteamento genérico de IRQ, sincronização, isolamento e recuperação necessários para drivers. Gate: fases 7–10 e infraestrutura de autoridade; iniciar com dispositivo virtual cuidadosamente delimitado. |
 | 15 — Temporizadores e energia | BLOQUEADA | O PIT é usado apenas pela preempção single-core da Fase 10; faltam serviço de relógio geral, ACPI, deadlines e abstração de drivers. Gate: interfaces de timer e driver da Fase 14. |
 | 16 — Armazenamento e filesystem | BLOQUEADA | Sem allocator, driver de dispositivo, timeout, sincronização ou framework de drivers. Não há dispositivo de bloco acessado pelo kernel. Gate: fases 8, 14 e 15. |
@@ -43,7 +43,7 @@ as fases não podem avançar com segurança:
 | 19 — Syscalls e aplicações | BLOQUEADA | Embora GDT/TSS/IDT de ring 0 e scheduler single-CPU existam, não há memória de usuário, CPL3, processos isolados, capabilities, IPC, loader de user ELF ou ABI. Gate: fases 8–12 e contrato de processo/address space testado. |
 | 20 — Interface gráfica | BLOQUEADA | Sem GOP/framebuffer no boot-info, page mappings, scheduler/processos, drivers de display e entrada ou ambiente de aplicações. Gate: fases 8–9, 14, 19 e backend gráfico testado no QEMU. |
 
-O estado “BLOQUEADA” nas fases 12–20 não significa que os objetivos sejam
+O estado “BLOQUEADA” nas fases 14–20 não significa que os objetivos sejam
 impossíveis; significa que as precondições listadas ainda não existem e que
 declarar implementação integrada seria incorreto. A Fase 11 está parcial:
 documentar uma interface, adicionar tipos isolados ou produzir uma demo no host
@@ -93,9 +93,11 @@ de recuperação, drivers, storage, rede, assinaturas, syscalls ou GUI.
 - `docs/security/`: threat model, tipos/direitos, ciclo de vida, fronteiras,
   isolamento de memória e protocolo/limites de testes.
 
-O gate da Fase 11 permanece parcial; fases 12–20 continuam bloqueadas pelas
-dependências acima. As auditorias anteriores documentadas abaixo são
-históricas e não representam o estado atual das capabilities.
+Os gates das Fases 11 e 12 permanecem parciais. A Fase 13 adicionou registro
+estruturado e política fail-stop, mas não contenção ou recuperação de serviços;
+as fases 14–20 continuam bloqueadas pelas dependências acima. As auditorias
+anteriores documentadas abaixo são históricas e não representam o estado atual
+das capabilities.
 
 ## Evidência adicionada para a Fase 12
 
@@ -119,8 +121,22 @@ permanecem pendentes.
 - `scripts/validate-docs.ps1` — valida presença dos estados das fases 11–20.
 
 As threads kernel e o IPC interno ainda não desbloqueiam sozinhos as fases
-13–20: faltam Ring 3, address spaces independentes, supervisor, drivers e
-outros pré-requisitos. Nenhuma fase 13–20 foi marcada como concluída.
+14–20: faltam Ring 3, address spaces independentes, supervisor, drivers e
+outros pré-requisitos. A Fase 13 está parcial; nenhuma fase 14–20 foi marcada
+como concluída.
+
+## Evidência da Fase 13
+
+- `kernel/fault/report.*` guarda até 32 eventos em memória estática. Exceções
+  CPU registram metadados estruturados; panic registra a ação fail-stop.
+- `mingw32-make test-unit build inspect` passou, incluindo testes do ring,
+  argumentos inválidos, overwrite e classificação do panic.
+- `mingw32-make test-panic-qemu test-exceptions-qemu test-boot
+  test-tasking-qemu test-preemption-qemu` passou. As imagens QEMU de exceção
+  confirmaram IDs estruturados e o panic foi observado antes do halt.
+- `mingw32-make validate-docs` e `git diff --check` passaram.
+- Não foi demonstrado isolamento ou recuperação de processo/serviço; a Fase 13
+  permanece parcial.
 
 ## Próximo caminho seguro
 
@@ -128,7 +144,7 @@ outros pré-requisitos. Nenhuma fase 13–20 foi marcada como concluída.
    capabilities ou IPC a código hostil.
 2. Reauditar os gates de 13–20 antes de cada subsistema, sem pular dependências.
 
-O lote 2 não está concluído. As fases 11 e 12 são parciais; fases 13–20
-permanecem pendentes/bloqueadas. A implementação da Fase 7 remove apenas o
+O lote 2 não está concluído. As fases 11–13 são parciais; fases 14–20
+permanecem bloqueadas. A implementação da Fase 7 remove apenas o
 bloqueio específico de GDT/IDT para exceções CPU; não fornece user mode,
 supervisor de serviços ou isolamento entre processos.

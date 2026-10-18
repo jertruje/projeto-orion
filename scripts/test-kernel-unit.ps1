@@ -9,6 +9,7 @@ $tests = @(
     @{ Path = (Join-Path $BuildDirectory 'page-tables-test.exe'); Arguments = @() },
     @{ Path = (Join-Path $BuildDirectory 'kernel-task-test.exe'); Arguments = @() },
     @{ Path = (Join-Path $BuildDirectory 'kernel-ipc-test.exe'); Arguments = @() },
+    @{ Path = (Join-Path $BuildDirectory 'kernel-fault-test.exe'); Arguments = @() },
     @{ Path = (Join-Path $BuildDirectory 'kernel-log-test.exe'); Arguments = @() },
     @{ Path = (Join-Path $BuildDirectory 'kernel-panic-test.exe'); Arguments = @('normal') },
     @{ Path = (Join-Path $BuildDirectory 'kernel-panic-test.exe'); Arguments = @('wrapper') },
@@ -31,4 +32,4 @@ foreach ($test in $tests) {
     }
 }
 
-Write-Output 'Kernel unit tests: PASS (boot-info/init-state, memory, tasking, IPC, logging, panic)'
+Write-Output 'Kernel unit tests: PASS (boot-info/init-state, memory, tasking, IPC, fault reports, logging, panic)'

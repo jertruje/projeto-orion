@@ -77,12 +77,22 @@ $requiredFiles = @(
     'docs\ipc\synchronization.md',
     'docs\ipc\resource-limits.md',
     'docs\ipc\testing.md',
+    'docs\faults\fault-model.md',
+    'docs\faults\exception-handling.md',
+    'docs\faults\panic-policy.md',
+    'docs\faults\process-recovery.md',
+    'docs\faults\service-supervision.md',
+    'docs\faults\diagnostics.md',
+    'docs\faults\testing.md',
     'kernel\security\capability.h',
     'kernel\security\capability.c',
     'kernel\ipc\channel.h',
     'kernel\ipc\channel.c',
+    'kernel\fault\report.h',
+    'kernel\fault\report.c',
     'tests\kernel\task\task_test.c',
     'tests\kernel\ipc\ipc_test.c',
+    'tests\kernel\fault\fault_test.c',
     'scripts\test-kernel-preemption.ps1',
     'docs\phase-status.md',
     'docs\phase-status-11-20.md',
@@ -151,6 +161,10 @@ $laterPhases = Get-Content -Raw -LiteralPath (Join-Path $root 'docs\phase-status
 foreach ($phase in 11..20) {
     if ($laterPhases -notmatch "(?m)^\| $phase\s+") {
         throw "Phase status row is missing for phase $phase"
+    }
+
+    if ($laterPhases -notmatch '(?m)^\| 13\s+— Supervisor de falhas \| PARCIAL: REGISTRO E POLÍTICA FAIL-STOP') {
+        throw 'Phase 13 must remain explicitly partial until service recovery exists.'
     }
 }
 

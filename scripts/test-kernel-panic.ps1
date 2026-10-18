@@ -26,6 +26,7 @@ try {
         -ExpectedMessages @(
             '[ORION][UEFI][INFO] kernel ELF validated',
             '[ORION][UEFI][INFO] kernel load segments reserved',
+            '[ORION][PANIC][ERROR] Structured fault event ID 2',
             '[ORION][EXCEPTION][ERROR] CPU exception vector 3',
             '[ORION][EXCEPTION][INFO] Breakpoint handled; resuming interrupted code',
             '[ORION][TEST][INFO] Breakpoint handler returned to interrupted code',

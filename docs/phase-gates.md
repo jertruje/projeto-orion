@@ -158,3 +158,13 @@ path, process-exit hook, capability-in-message transfer, request/reply
 protocol, fuzzing campaign or performance measurement. Therefore the phase is
 not approved as IPC between applications; those items remain gated for later
 phases.
+
+## Fault reporting gate result
+
+**Phase 13 partially implemented.** A 32-entry static report ring records CPU
+exceptions and kernel panics; host tests cover ring bounds, overwrite behavior,
+field preservation, invalid input and panic classification. QEMU tests verify
+an event is emitted for controlled CPU exceptions. The panic policy remains
+fail-stop. No user process/service isolation, process-exit IPC cleanup,
+supervisor, bounded restart policy, or service recovery is implemented; those
+acceptance criteria remain open.

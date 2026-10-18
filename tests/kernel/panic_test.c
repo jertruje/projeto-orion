@@ -1,5 +1,7 @@
 #include "../../kernel/panic/panic.h"
 #include "../../kernel/log/log.h"
+#include "../../kernel/arch/x86_64/interrupt_state.h"
+#include "../../kernel/fault/report.h"
 
 #include <setjmp.h>
 #include <stdlib.h>
@@ -14,6 +16,7 @@ static uint32_t log_calls;
 static orion_log_level last_level;
 static const char *last_module;
 static const char *last_message;
+static bool interrupts_enabled = true;
 
 static bool strings_equal(const char *left, const char *right)
 {
@@ -32,7 +35,20 @@ static bool strings_equal(const char *left, const char *right)
 
 void orion_arch_disable_interrupts(void)
 {
+    interrupts_enabled = false;
     ++disable_calls;
+}
+
+bool orion_x86_64_interrupts_save_disable(void)
+{
+    const bool previous = interrupts_enabled;
+    interrupts_enabled = false;
+    return previous;
+}
+
+void orion_x86_64_interrupts_restore(bool enabled)
+{
+    interrupts_enabled = enabled;
 }
 
 _Noreturn void orion_arch_halt(void)
@@ -102,9 +118,20 @@ int main(int argc, char **argv)
     }
     halt_armed = false;
 
+    {
+        orion_fault_record report = {0};
+        if (orion_fault_report_count() != 1U ||
+            orion_fault_report_get(1, &report) != ORION_FAULT_STATUS_OK ||
+            report.category != ORION_FAULT_KERNEL_PANIC ||
+            report.action != ORION_FAULT_ACTION_HALT_KERNEL ||
+            report.recovery_result !=
+                ORION_FAULT_RECOVERY_NOT_ATTEMPTED) {
+            return 1;
+        }
+    }
     if (disable_calls != (recursive_case ? 2U : 1U) ||
         halt_calls != 1U || log_calls != 1U) {
-        return 1;
+        return 2;
     }
     if (recursive_case) {
         return 0;
@@ -115,19 +142,19 @@ int main(int argc, char **argv)
                                      "unspecified fatal failure") &&
                        last_level == ORION_LOG_ERROR
                    ? 0
-                   : 1;
+                       : 3;
     }
     if (wrapper_case) {
         return strings_equal(last_module, "CORE") &&
                        strings_equal(last_message, "wrapper reason") &&
                        last_level == ORION_LOG_ERROR
                    ? 0
-                   : 1;
+                   : 4;
     }
     return strings_equal(last_module, "TEST") &&
                    strings_equal(last_message, "fatal test reason") &&
                    last_level == ORION_LOG_ERROR &&
                    (failed_log_case || log_result)
                ? 0
-               : 1;
+               : 5;
 }

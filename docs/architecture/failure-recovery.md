@@ -30,5 +30,8 @@ idempotency, durable state, retries, resource revocation, dependent behavior
 and terminal outcome. Kernel memory corruption, unknown DMA activity, hardware
 failure and specification errors are not promised recoverable.
 
-No supervisor/restart/recovery subsystem exists in current code. Existing
-`orion_panic` is a non-returning halt, not service recovery.
+The current implementation adds a bounded, volatile fault-report ring and
+records CPU exceptions and kernel panics. The ring is diagnostic evidence,
+not a supervisor or restart/recovery subsystem. The existing `orion_panic`
+remains a non-returning halt. There are no isolated user processes, service
+lifecycle hooks, restart policy, or IPC teardown on process exit.
