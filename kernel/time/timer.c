@@ -224,7 +224,9 @@ bool orion_timer_run_expired(uint32_t callback_limit, uint32_t *callbacks_run)
         slot->state = TIMER_SLOT_FIRING;
         orion_x86_64_interrupts_restore(interrupts_were_enabled);
 
-        const bool callback_succeeded = callback(handle, context);
+        const bool callback_succeeded = slot->waiting_thread == NULL
+            ? callback(handle, context)
+            : orion_thread_transition(slot->waiting_thread, ORION_THREAD_READY);
 
         const bool restore_interrupts =
             orion_x86_64_interrupts_save_disable();
@@ -254,7 +256,7 @@ bool orion_timer_run_expired(uint32_t callback_limit, uint32_t *callbacks_run)
             }
             clear_slot(slot);
             success = false;
-        } else if (period != 0) {
+        } else if (slot->waiting_thread == NULL && period != 0) {
             uint64_t callback_time = 0;
             if (!orion_clocksource_now_nanoseconds(&callback_time) ||
                 period > UINT64_MAX - callback_time) {
@@ -307,10 +309,11 @@ bool orion_timer_check_invariants(void)
             slot->state == TIMER_SLOT_FIRING) {
             ++active;
             valid = valid && slot->generation != 0 &&
-                    slot->callback != NULL;
+                    (slot->callback != NULL || slot->waiting_thread != NULL);
         } else {
             valid = valid && slot->callback == NULL &&
-                    slot->context == NULL;
+                    slot->context == NULL &&
+                    slot->waiting_thread == NULL;
         }
     }
     valid = valid && active == timer_stats.active &&
