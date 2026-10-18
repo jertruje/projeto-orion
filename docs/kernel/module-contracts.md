@@ -10,7 +10,8 @@
 | Panic (`panic.c`) | Module and reason strings | Never returns; suppresses recursive log attempt and reaches halt | Logger and x86-64 fatal backend. Output is best effort only. |
 | CPU entry validator (`cpu_state.S`) | Static stack bottom/top addresses | Boolean result for checked inherited CPU/stack state | Privileged CR/MSR reads; called only after boot-info validation and in QEMU/kernel context. Failure causes panic. |
 | Fatal backend (`fatal.S`) | Disable-interrupts operation and non-returning halt | IF is cleared; halt remains in a deterministic loop | x86-64 privileged instructions; host tests provide mocks. |
-| IF controls (`interrupt_state.S`) | Query current IF; disable or enable maskable interrupts | Explicit `bool` query and `cli`/`sti` operations; enabling is not used during bring-up | x86-64 privileged instructions; IF remains clear until a controller/handler return path is validated. |
+| IF controls (`interrupt_state.S`) | Query, disable, atomically save-disable, conditionally restore IF | Explicit query/CLI/STI and scheduler critical-section operations | x86-64 privileged instructions; IF is enabled only during the bounded PIT preemption test after controller/vector/EOI/return validation. |
+| Timer/PIC (`timer.c`) | Initialize/stop PIT channel 0 and remapped legacy PIC; expose ticks and diagnostic TSC samples | IRQ0 only; PIC EOI precedes scheduling; controller masked after test | IDT vector 32 and scheduler; initialization/runtime failure is fail-stop or returned as a setup error. Single QEMU vCPU only. |
 
 All C interfaces require valid pointers to readable, NUL-terminated strings
 where their signatures accept strings. There is no generic subsystem registry

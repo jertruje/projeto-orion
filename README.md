@@ -21,9 +21,11 @@ These are objectives, not demonstrated advantages over Linux or any other OS.
   exceptions. External IRQs remain disabled; this is not evidence of process
   isolation or system-wide security/performance.
 - This is a bring-up scaffold, not a general-purpose OS. Phase 8 has a limited
-  physical page allocator and a host-tested page-table manager, but the manager
-  is not connected to active CR3. There are no processes/threads, scheduler,
-  timer preemption, SMP, drivers, userspace, or GUI.
+  physical page allocator and a QEMU-tested page-table smoke path. Phases 9–10
+  add kernel-only threads, a single-core scheduler, and PIT preemption. Phase
+  11 adds a tested kernel-internal capability manager. Phase 12 adds bounded
+  non-blocking kernel-thread channels; there is still no Ring 3, application
+  IPC, independent process address spaces, SMP, drivers, or GUI.
 - Phase 2 research is approved as a documentary synthesis with explicit
   evidence limits. One seL4 IPC microbenchmark is recorded, but there is no
   comparable cross-OS benchmark and no ORION performance or security result.
@@ -45,6 +47,9 @@ mingw32-make test-unit
 mingw32-make test-boot
 mingw32-make test-panic-qemu
 mingw32-make test-exceptions-qemu
+mingw32-make test-tasking-qemu
+mingw32-make test-preemption-qemu
+mingw32-make test-boot
 mingw32-make validate-docs
 ```
 
@@ -54,6 +59,15 @@ documents.
 
 The limited Phase 8 memory implementation and its remaining live-page-table
 gate are documented under [memory](docs/memory/memory-model.md).
+
+The Phase 11 capability implementation and its limits are documented under
+[security](docs/security/capability-model.md). It is not user/process
+isolation; see the [privilege boundary](docs/security/privilege-boundaries.md)
+and [security test report](docs/security/security-testing.md).
+
+The Phase 12 kernel-thread IPC implementation, limits and test evidence are
+documented under [IPC](docs/ipc/architecture.md). It does not expose
+communication to Ring 3 applications.
 
 The standalone toolchain probe and environment/language decisions are
 documented in [Toolchain](docs/toolchain.md),

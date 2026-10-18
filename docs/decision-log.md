@@ -25,7 +25,11 @@ substitui dados de teste.
 | ADR-0016 | Aceita para ambiente validado | MSYS2 UCRT64 no Windows, Clang/LLD, NASM e GNU Make. | Os targets PE/COFF UEFI e ELF x86-64 são suportados no ambiente observado; teste independente valida formato e dependências. | Versões não estão pinadas por lockfile; segundo host e CI ainda não validaram portabilidade. |
 | ADR-0017 | Aceita para núcleo mínimo | Sequência determinística single-CPU, logs limitados e panic não retornável; validar apenas o estado de entrada necessário. | Testes host dos contratos e boot QEMU confirmaram sequência até idle; validação de entrada checou CPU/stack herdados do loader. | No fechamento original da Fase 6 ainda não havia GDT/IDT; Fase 7 adicionou tabelas e handlers de exceção, mas não memória própria, sincronização ou IRQ externo. |
 | ADR-0018 | Aceita para exceções de CPU | Instalar GDT/TSS e IDT próprias, tratar vetores CPU 0–31, usar IST1 para #DF e manter IF fechado. | QEMU normal + testes isolados #BP/#DE/#UD/#GP/#PF/#DF; leituras SGDT/SIDT/CS/DS/TR validadas em runtime. | Sem PIC/APIC/IRQ externa, paginação própria, retorno de exceções fatais ou garantia de proteção de memória. |
-| ADR-0019 | Aceita para bring-up, implementação incompleta | Mapa UEFI fail-closed e bitmap de frames reservado por padrão, limitado a 4 GiB; page-table manager callback-based sem troca de CR3. | Host tests de mapa/allocator/page tables; QEMU valida mapa e PMM alloc/free. | Sem page-walk/permissões no CR3 ativo, user mode, reclaim de firmware, NX setup ou SMP. |
+| ADR-0019 | Aceita para bring-up; Fase 8 concluída no escopo de bootstrap | Mapa UEFI fail-closed, bitmap de frames reservado por padrão limitado a 4 GiB e page-table manager callback-based; adaptador QEMU clona o PML4 herdado e testa mapeamentos no CR3 clonado. | Testes host e QEMU para map/write/lookup/unmap, além de faults RO (#PF 3) e NX (#PF 17). | Sem address spaces de usuário, reclaim de firmware, NX setup pelo kernel, SMP shootdown ou garantia de portabilidade do alias físico/virtual. |
+| ADR-0020 | Aceita para bring-up; Fase 9 concluída no escopo cooperativo | Processo kernel único, pool estático bounded e fila round-robin cooperativa single-CPU; não habilitar IF/preempção. | Host unit tests mais trace QEMU de duas threads alternadas, args/locals, término e invariantes. | Sem user mode/isolamento, scheduler preemptivo, general wait/wakeup ou SMP; slots/IDs não reutilizados. |
+| ADR-0021 | Aceita para bring-up; Fase 10 concluída no escopo preemptivo single-core | PIT/PIC IRQ0 a 100 Hz nominal, vetor 32, FIFO round-robin e scheduler protegido por salvar/restaurar IF. | QEMU `-smp 1`: CPU-bound workers progrediram sem yield, IRQ0/EOI, preempções, contexto e caminho sem peers verificados; TSC virtual usado apenas como diagnóstico. | Sem AP startup/SMP, APIC, IRQ de dispositivos, FPU/SIMD switching, medição física ou garantias de latência. |
+| ADR-0022 | Aceita para Fase 11 parcial | Tabelas bounded de capabilities no kernel; handles locais compostos por geração de tabela, geração de slot e índice; derivação/transferência apenas em subconjuntos; revogação invalida slots globais e leases existentes atrasam destruição. | Host negatives e autoteste do boot QEMU passam; sincronização salva/desabilita IF no kernel single-core. | Não há Ring 3, address space por processo, IPC, API de usuário nem segurança SMP; capabilities ainda não mediam operações reais de memória/dispositivo/processo. |
+| ADR-0023 | Aceita para Fase 12 parcial | Canais full-duplex com duas capabilities de endpoint, filas FIFO estáticas, payload copiado até 256 bytes e operações não bloqueantes. Autoridade deriva das capabilities tipadas da Fase 11. | Testes host cobrem conteúdo, limites, fila, autoridade, fechamento, exaustão e invariantes; QEMU prova troca entre duas threads kernel. | Sem wait queues, user mode, entrega de capabilities em mensagens, process-exit cleanup ou sincronização SMP; não é IPC de aplicações. |
 
 Alterações devem incluir a evidência que motivou a revisão, decisões rejeitadas
 e efeito nos requisitos rastreados.
@@ -340,29 +344,95 @@ de dados de hardware/workload permanecem parametrizadas e têm gates explícitos
   tempo de busca; considerar free-list/buddy se medição mostrar que os custos
   violam requisitos concretos.
 
-### ADR-0019 — Mapa UEFI e page-table manager inicial sem migração de CR3 (ACEITA PARA BRING-UP; FASE 8 INCOMPLETA)
+### ADR-0019 — Mapa UEFI e page-table manager inicial (ACEITA PARA BRING-UP; FASE 8 CONCLUÍDA NO ESCOPO DE BOOTSTRAP)
 
 - **Contexto/problema:** a Fase 8 precisa contabilizar frames sem assumir que
   page tables ou identity mappings do firmware sejam portáveis entre máquinas.
 - **Alternativas consideradas:** continuar sem PMM; trocar imediatamente para
   um root próprio; inicializar PMM e testar um gerenciador virtual por callbacks
   sem alterar o espaço ativo.
-- **Evidência:** QEMU/EDK2 testou o mapa UEFI real, invariantes e allocate/release
-  do PMM; testes host cobrem page-table map/lookup/unmap, flags e rollback OOM.
-  A inspeção ainda não prova que tabelas herdadas são acessíveis por endereço
-  físico igual a virtual nem que um root próprio preservaria todos os ranges
-  ativos.
-- **Decisão:** reserva fail-closed de todos os tipos UEFI exceto convencional,
-  PMM limitado a 4 GiB, e API de page table que recebe callbacks explícitos.
-  Manter CR3 herdado sem alteração até existir método seguro de resolver frames
-  e uma prova QEMU de mapeamentos/permissões ativos.
-- **Consequências:** boot atual permanece sem migração arriscada; API virtual
-  é testável, mas não fornece proteção ou espaço de usuário em runtime.
+- **Evidência:** testes host cobrem validação do mapa/PMM e page-table
+  map/lookup/unmap, flags e rollback OOM. QEMU/EDK2 validou o mapa real,
+  invariantes do PMM, allocate/release, clonagem do PML4 herdado, troca para
+  o root clonado e map/write/lookup/unmap temporário. Imagens QEMU separadas
+  confirmaram #PF 3 ao escrever em página RO e #PF 17 ao executar em página
+  NX. O root, pool e páginas de kernel permanecem em regiões reservadas.
+- **Decisão:** manter a reserva fail-closed de todos os tipos UEFI exceto
+  convencional, PMM limitado a 4 GiB e API de page table com callbacks
+  explícitos. Para o escopo de bootstrap, copiar as entradas do PML4 herdado
+  para root estático reservado e instalar essa cópia antes do teste real de
+  mapeamento, preservando os mapeamentos ativos. O adaptador usa um pool
+  estático limitado a 32 tabelas e acessa-o por endereço virtual numericamente
+  igual ao físico.
+- **Consequências:** map/write/lookup/unmap e permissões RO/NX são exercitados
+  contra tabelas ativas em QEMU; o kernel continua sem address space de usuário
+  ou proteção entre processos. A identidade física/virtual do pool foi
+  observada apenas em QEMU/EDK2 e não é um contrato de portabilidade.
 - **Riscos residuais:** teto físico, bitmap fixo, sem reclaim de boot-services,
-  sem TLB shootdown SMP, e page-table paths não validados no guest.
-- **Critério de conclusão:** testar page-walk real e proteção RW/NX em QEMU,
-  confirmar endereços/código/stack/boot-data após a ativação, exercitar falha
-  de alocação e então integrar o root no kernel.
+  sem TLB shootdown SMP, sem NXE habilitado pelo kernel e sem validação em
+  firmware/hardware distintos.
+- **Critério de conclusão do escopo de bootstrap:** mapear, consultar e remover
+  uma página no root ativo; observar faults de escrita RO e execução NX;
+  confirmar preservação do boot, stack e mapeamentos herdados; cobrir rollback
+  de alocação nos testes host. Esses critérios passaram no ambiente declarado.
+  Address spaces, user isolation e suporte multiplataforma continuam gates
+  futuros, não extensões implícitas desta decisão.
+
+### ADR-0020 — Threads de kernel e escalonamento cooperativo bounded (ACEITA PARA BRING-UP)
+
+- **Contexto/problema:** preparar lifecycle e troca de contexto testáveis sem
+  habilitar IRQs, timer ou transições de privilégio ainda não validados.
+- **Alternativas consideradas:** manter somente o contexto de boot; fazer
+  troca preemptiva por IRQ; implementar threads cooperativas com pool e fila
+  limitada.
+- **Evidência:** host tests exercitam limites, estados e invariantes; QEMU
+  11.1.2/EDK2 observou duas pilhas e threads distintas alternando em oito
+  eventos ordenados, preservando argumento e local volatile, terminando e
+  retornando ao contexto bootstrap. IF permaneceu desabilitado.
+- **Decisão:** um processo kernel organizacional, oito TCBs estáticos contando
+  o bootstrap, stacks de 16 KiB, FIFO round-robin cooperativo e contexto SysV
+  AMD64 limitado ao stack pointer e registradores GPR preservados pelo ABI.
+  Manter IF clear, sem timer, preempção, user mode ou APs. Destruir somente
+  threads terminadas em outro stack; aposentar seus TCB slots para impedir
+  aliasing de handles antigos.
+- **Consequências:** multitarefa cooperativa de kernel real é verificável,
+  mas recursos são limitados por boot e não existe contenção automática de
+  tarefa que não cede. Processo não equivale a domínio isolado.
+- **Riscos residuais:** sem guard pages, locks, bloqueio/despertar genérico,
+  FPU/SIMD thread state, medição temporal ou validação de ABI sob outras
+  toolchains; stacks e TCBs são memória BSS compartilhada.
+- **Critério de revisão:** antes da Fase 10, validar salvamento de contexto de
+  interrupção, timer/EOI, regiões críticas e retorno IDT; antes de user mode,
+  definir root de processo, privilégio, syscalls e ownership de recursos.
+
+### ADR-0021 — Preempção PIT/PIC single-core (ACEITA PARA BRING-UP)
+
+- **Contexto/problema:** o round-robin cooperativo da Fase 9 não impede uma
+  thread CPU-bound de monopolizar a CPU; o handler de exceção não reconhecia
+  IRQs externas e o scheduler não possuía exclusão de interrupções.
+- **Alternativas consideradas:** manter yield cooperativo; usar PIT/PIC legado
+  para a primeira IRQ verificável; introduzir APIC timer e SMP desde o início.
+- **Evidência:** QEMU 11.1.2/EDK2 em uma vCPU registrou IRQ0/preempções e duas
+  workers CPU-bound executaram mais de 1.000.000 iterações sem yield. O teste
+  verificou quatro ticks sem peers prontos, stacks, estados, contador de
+  switches, e TSC virtual para dispatch/handoff.
+- **Decisão:** programar PIT channel 0 com divisor 11.932, remapear PIC para
+  0x20/0x28 e habilitar só IRQ0 durante o auto-teste de boot. Vector 32 usa
+  stub de frame normalizado e `iretq`; o EOI precede qualquer context switch.
+  A rotação FIFO ocorre no contexto da interrupção, mas reutiliza o context
+  switch call-based sobre a pilha da thread interrompida. Scheduler mutations
+  salvam IF, executam com IF clear e restauram o estado anterior.
+- **Consequências positivas:** há preempção executável e evidência automática
+  de que CPU-bound work não bloqueia peers no ambiente validado.
+- **Consequências negativas:** dependência de PIC/PIT legacy e de uma única
+  CPU; quantum nominal ~10 ms sujeito a jitter; a VM testada não valida
+  firmware/hardware físicos.
+- **Riscos residuais:** sem APIC/IOAPIC, AP startup, SMP locks/TLB shootdown,
+  general blocking, user mode, per-thread FPU/SIMD state ou cobertura de
+  latência de cauda. TSC reportado é virtual e não calibrado.
+- **Critérios de revisão:** before enabling the timer in general operation,
+  add full interrupt/device policy and longer stress tests; before SMP, require
+  AP topology/startup, per-CPU state, unique ownership and multi-vCPU tests.
 
 ### ADR-0014 — Boot bundle pré-carregado para bootstrap de user mode (ACEITA COMO ARQUITETURA-BASE)
 
@@ -489,3 +559,32 @@ de dados de hardware/workload permanecem parametrizadas e têm gates explícitos
 - **Critérios de revisão:** habilitar IRQ somente após controlador, vetores,
   acknowledgement/EOI, pilhas, retorno e sincronização serem testados em fases
   posteriores; rever a dependência da porta 0x70 para plataformas distintas.
+
+### ADR-0022 — Tabelas bounded de capabilities no kernel (ACEITA PARA FASE 11 PARCIAL)
+
+- **Contexto/problema:** processos e threads existentes executam apenas em
+  Ring 0; não há address spaces independentes, syscalls ou IPC. A fase precisa
+  validar regras de autoridade sem alegar isolamento de um processo hostil.
+- **Alternativas consideradas:** adiar qualquer implementação até Ring 3;
+  criar handles globais por ponteiro; introduzir tabelas por proprietário,
+  gerações, direitos tipados e leases sem expor ponteiros como handles.
+- **Evidências:** testes host de negação/atenuação/revogação/lifecycle e
+  autoteste de boot QEMU passaram; `mingw32-make build inspect` linkou o
+  kernel freestanding sem símbolos indefinidos.
+- **Decisão:** implementar tabelas estáticas limitadas e kernel-only, handles
+  locais com geração de tabela/slot, direitos por tipo, derive/transfer como
+  subconjuntos, revogação global e destruição adiada por leases. Salvar e
+  desabilitar IF serializa operações somente no ambiente single-core atual.
+- **Consequências positivas:** direitos e lifecycle são verificáveis sem
+  ponteiros de kernel nos handles; falhas de autorização e esgotamento são
+  explícitos.
+- **Consequências negativas:** slots estáticos podem ser aposentados; não há
+  escalabilidade, proteção SMP, política de concessão a usuário ou mediação de
+  operações reais de memória/dispositivo.
+- **Riscos residuais:** comprometimento do kernel contorna o mecanismo; leases
+  preexistentes continuam até release após revogação; códigos ainda podem
+  contornar a API se operações futuras não forem integradas.
+- **Critérios de revisão:** integrar às operações reais, user mode, IPC,
+  quotas, teardown de processos e sincronização apropriada antes de alegar
+  isolamento; executar testes negativos em Ring 3 e stress/race tests quando
+  SMP for introduzido.

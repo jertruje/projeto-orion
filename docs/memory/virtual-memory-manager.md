@@ -13,7 +13,14 @@ Leaf data frames are not freed by unmap; their owner must manage their
 lifetime.
 
 The manager is covered by host tests with a synthetic page-table frame pool.
-It is not currently connected to the UEFI-inherited CR3, does not install a
-new root, and has not changed any live kernel mapping. Do not use it for a
-process address space until a safe physical-to-virtual mapping, CPU-specific
-NX setup, frame ownership, and live QEMU permission tests are added.
+The bootstrap adapter copies the inherited PML4 into reserved static memory,
+installs the copy in CR3, and exercises map/write/lookup/unmap on a temporary
+address in an empty higher-half PML4 slot. Isolated QEMU images also confirm
+that writes to read-only mappings and instruction fetches from NX mappings
+fault with the expected page-fault error bits.
+
+This is a tested bootstrap mapping path, not process address-space support.
+The adapter relies on static kernel table memory being accessible at the same
+numeric virtual and physical addresses, an assumption verified only with
+QEMU/EDK2. The 32-page static table pool is bounded; no independent user root,
+physical-to-virtual mapping window, demand paging, or SMP TLB shootdown exists.

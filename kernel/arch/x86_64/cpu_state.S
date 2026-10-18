@@ -82,6 +82,13 @@ orion_x86_64_read_cr3:
     ret
 .size orion_x86_64_read_cr3, .-orion_x86_64_read_cr3
 
+.global orion_x86_64_write_cr3
+.type orion_x86_64_write_cr3,@function
+orion_x86_64_write_cr3:
+    movq %rdi, %cr3
+    ret
+.size orion_x86_64_write_cr3, .-orion_x86_64_write_cr3
+
 .global orion_x86_64_uses_four_level_paging
 .type orion_x86_64_uses_four_level_paging,@function
 orion_x86_64_uses_four_level_paging:

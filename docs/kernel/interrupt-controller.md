@@ -1,11 +1,13 @@
-# Interrupt controller boundary — Phase 7
+# Interrupt controller boundary — Phases 7 and 10
 
-This phase configures CPU exception delivery only. It does not remap, mask,
-acknowledge, or otherwise reprogram the legacy PIC; it does not initialize an
-APIC or route device interrupts. The fact that an IDT exists is not evidence
-that an external interrupt controller is operational.
+The CPU exception path is installed for vectors 0–31. Phase 10 adds only the
+legacy PIT/PIC path needed for single-CPU scheduling: the master/slave 8259
+vectors are remapped to 0x20/0x28, all lines are masked during setup, PIT
+channel-0 IRQ0 is routed to IDT vector 32, and the master PIC receives EOI
+before the scheduler can switch contexts. Only IRQ0 is unmasked; unsupported
+external vectors fail-stop.
 
-IF remains clear throughout the normal kernel path. IDT vectors 32–255 are
-not-present, so enabling IRQs without a later controller/vector phase would be
-unsafe. PIC/APIC selection, vector allocation, EOI and spurious IRQ handling
-remain open work for the timer/device phases.
+The timer is enabled for the bounded preemption test only and is masked again
+before the idle loop. QEMU/EDK2 with one vCPU is the only tested configuration.
+No APIC/IOAPIC routing, spurious IRQ policy, device IRQ support, or physical
+hardware compatibility is claimed.

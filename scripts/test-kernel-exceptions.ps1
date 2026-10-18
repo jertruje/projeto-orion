@@ -59,6 +59,32 @@ $cases = @(
             '[ORION][EXCEPTION][ERROR] CPU error code 0',
             '[ORION][EXCEPTION][ERROR] fatal CPU exception'
         )
+    },
+    @{
+        Image = (Join-Path $BuildDirectory 'readonly-test-kernel.elf')
+        Expected = @(
+            '[ORION][UEFI][INFO] kernel ELF validated',
+            '[ORION][EXCEPTION][ERROR] CPU exception vector 14',
+            '[ORION][EXCEPTION][ERROR] CPU error code 3',
+            '[ORION][EXCEPTION][ERROR] Page fault: protection violation 1',
+            '[ORION][EXCEPTION][ERROR] Page fault: write access 1',
+            '[ORION][EXCEPTION][ERROR] Page fault: user access 0',
+            '[ORION][EXCEPTION][ERROR] Page fault: instruction fetch 0',
+            '[ORION][EXCEPTION][ERROR] fatal CPU exception'
+        )
+    },
+    @{
+        Image = (Join-Path $BuildDirectory 'nx-test-kernel.elf')
+        Expected = @(
+            '[ORION][UEFI][INFO] kernel ELF validated',
+            '[ORION][EXCEPTION][ERROR] CPU exception vector 14',
+            '[ORION][EXCEPTION][ERROR] CPU error code 17',
+            '[ORION][EXCEPTION][ERROR] Page fault: protection violation 1',
+            '[ORION][EXCEPTION][ERROR] Page fault: write access 0',
+            '[ORION][EXCEPTION][ERROR] Page fault: user access 0',
+            '[ORION][EXCEPTION][ERROR] Page fault: instruction fetch 1',
+            '[ORION][EXCEPTION][ERROR] fatal CPU exception'
+        )
     }
 )
 
@@ -86,4 +112,4 @@ try {
     Copy-Item -LiteralPath $normalKernel -Destination $kernelPath -Force
 }
 
-Write-Output 'QEMU controlled exception verification: PASS (DE, UD, GP, PF, DF)'
+Write-Output 'QEMU controlled exception verification: PASS (DE, UD, GP, PF, DF, RO, NX)'

@@ -26,9 +26,17 @@ KERNEL_OBJECTS := $(BUILD)/entry.o $(BUILD)/main.o $(BUILD)/serial.o \
 	$(BUILD)/log.o $(BUILD)/panic.o $(BUILD)/cpu_state.o $(BUILD)/fatal.o \
 	$(BUILD)/gdt.o $(BUILD)/idt.o $(BUILD)/interrupts.o \
 	$(BUILD)/interrupt_state.o $(BUILD)/exceptions.o $(BUILD)/memory_map.o \
-	$(BUILD)/physical.o $(BUILD)/page_tables.o $(BUILD)/active_page_tables.o
+	$(BUILD)/physical.o $(BUILD)/page_tables.o $(BUILD)/active_page_tables.o \
+	$(BUILD)/context_switch.o $(BUILD)/process.o $(BUILD)/thread.o \
+	$(BUILD)/scheduler.o $(BUILD)/timer.o $(BUILD)/capability.o \
+	$(BUILD)/ipc-channel.o
+KERNEL_TASKING_OBJECTS := $(BUILD)/context_switch.o $(BUILD)/process.o \
+	$(BUILD)/thread.o $(BUILD)/scheduler.o $(BUILD)/timer.o \
+	$(BUILD)/interrupt_state.o $(BUILD)/capability.o $(BUILD)/ipc-channel.o
 
-.PHONY: all check-tools build run test-boot test-panic-qemu test-exceptions-qemu test-unit toolchain-test validate-docs clean inspect
+.PHONY: all check-tools build run test-boot test-tasking-qemu test-panic-qemu \
+	test-exceptions-qemu test-preemption-qemu test-unit toolchain-test \
+	validate-docs clean inspect
 
 all: build
 
@@ -78,7 +86,14 @@ $(BUILD)/interrupt_state.o: kernel/arch/x86_64/interrupt_state.S | $(BUILD)/.dir
 
 $(BUILD)/exceptions.o: kernel/arch/x86_64/exceptions.c \
 	kernel/arch/x86_64/idt.h kernel/arch/x86_64/cpu_state.h \
+	kernel/arch/x86_64/timer.h \
 	kernel/log/log.h kernel/panic/panic.h | $(BUILD)/.dir
+	$(CLANG) $(KERNEL_CFLAGS) -c $< -o $@
+
+$(BUILD)/timer.o: kernel/arch/x86_64/timer.c \
+	kernel/arch/x86_64/timer.h kernel/arch/x86_64/idt.h \
+	kernel/arch/x86_64/interrupt_state.h kernel/task/scheduler.h \
+	kernel/panic/panic.h | $(BUILD)/.dir
 	$(CLANG) $(KERNEL_CFLAGS) -c $< -o $@
 
 $(BUILD)/memory_map.o: kernel/mm/memory_map.c kernel/mm/memory_map.h \
@@ -99,12 +114,55 @@ $(BUILD)/active_page_tables.o: kernel/mm/active_page_tables.c \
 	kernel/arch/x86_64/cpu_state.h | $(BUILD)/.dir
 	$(CLANG) $(KERNEL_CFLAGS) -c $< -o $@
 
+$(BUILD)/context_switch.o: kernel/arch/x86_64/context_switch.S | $(BUILD)/.dir
+	$(CLANG) $(KERNEL_CFLAGS) -c $< -o $@
+
+$(BUILD)/process.o: kernel/task/process.c kernel/task/process.h \
+	kernel/task/thread.h kernel/security/capability.h | $(BUILD)/.dir
+	$(CLANG) $(KERNEL_CFLAGS) -c $< -o $@
+
+$(BUILD)/capability.o: kernel/security/capability.c \
+	kernel/security/capability.h kernel/task/process.h \
+	kernel/arch/x86_64/interrupt_state.h | $(BUILD)/.dir
+	$(CLANG) $(KERNEL_CFLAGS) -c $< -o $@
+
+$(BUILD)/ipc-channel.o: kernel/ipc/channel.c kernel/ipc/channel.h \
+	kernel/security/capability.h kernel/task/scheduler.h \
+	kernel/arch/x86_64/interrupt_state.h | $(BUILD)/.dir
+	$(CLANG) $(KERNEL_CFLAGS) -c $< -o $@
+
+$(BUILD)/thread.o: kernel/task/thread.c kernel/task/thread.h \
+	kernel/task/process.h kernel/task/scheduler.h \
+	kernel/arch/x86_64/context_switch.h \
+	kernel/arch/x86_64/interrupt_state.h | $(BUILD)/.dir
+	$(CLANG) $(KERNEL_CFLAGS) -c $< -o $@
+
+$(BUILD)/scheduler.o: kernel/task/scheduler.c kernel/task/scheduler.h \
+	kernel/task/thread.h kernel/task/process.h \
+	kernel/arch/x86_64/context_switch.h \
+	kernel/arch/x86_64/interrupt_state.h | $(BUILD)/.dir
+	$(CLANG) $(KERNEL_CFLAGS) -c $< -o $@
+
+$(BUILD)/nx-active-page-tables.o: kernel/mm/active_page_tables.c \
+	kernel/mm/active_page_tables.h kernel/mm/page_tables.h \
+	kernel/mm/memory_map.h kernel/mm/physical.h \
+	kernel/arch/x86_64/cpu_state.h | $(BUILD)/.dir
+	$(CLANG) $(KERNEL_CFLAGS) -DORION_TEST_NX_EXECUTION_FAULT -c $< -o $@
+
+$(BUILD)/readonly-active-page-tables.o: kernel/mm/active_page_tables.c \
+	kernel/mm/active_page_tables.h kernel/mm/page_tables.h \
+	kernel/mm/memory_map.h kernel/mm/physical.h \
+	kernel/arch/x86_64/cpu_state.h | $(BUILD)/.dir
+	$(CLANG) $(KERNEL_CFLAGS) -DORION_TEST_READONLY_WRITE_FAULT -c $< -o $@
+
 $(BUILD)/main.o: kernel/core/main.c include/orion/boot_info.h include/orion/init_state.h \
 	kernel/arch/x86_64/cpu_state.h kernel/arch/x86_64/gdt.h \
 	kernel/arch/x86_64/idt.h kernel/arch/x86_64/interrupt_state.h \
+	kernel/arch/x86_64/timer.h \
 	kernel/mm/active_page_tables.h kernel/mm/memory_map.h \
-	kernel/mm/physical.h kernel/log/log.h \
-	kernel/panic/panic.h kernel/console/serial.h | $(BUILD)/.dir
+	kernel/mm/physical.h kernel/task/scheduler.h kernel/log/log.h \
+	kernel/security/capability.h kernel/panic/panic.h \
+	kernel/console/serial.h | $(BUILD)/.dir
 	$(CLANG) $(KERNEL_CFLAGS) -c $< -o $@
 
 $(BUILD)/serial.o: kernel/console/serial.c kernel/console/serial.h | $(BUILD)/.dir
@@ -137,6 +195,14 @@ test-boot: build
 	@powershell.exe -NoProfile -ExecutionPolicy Bypass -File scripts/test-boot.ps1 \
 		-ToolchainHome "$(TOOLCHAIN_HOME)" -RequireRunning
 
+test-tasking-qemu: build
+	@powershell.exe -NoProfile -ExecutionPolicy Bypass -File scripts/test-kernel-tasking.ps1 \
+		-ToolchainHome "$(TOOLCHAIN_HOME)" -BuildDirectory "$(BUILD)"
+
+test-preemption-qemu: build
+	@powershell.exe -NoProfile -ExecutionPolicy Bypass -File scripts/test-kernel-preemption.ps1 \
+		-ToolchainHome "$(TOOLCHAIN_HOME)" -BuildDirectory "$(BUILD)"
+
 $(BUILD)/boot-info-test.exe: tests/boot_info_test.c include/orion/boot_info.h \
 	include/orion/init_state.h | $(BUILD)/.dir
 	$(CLANG) -Iinclude -std=c11 -Wall -Wextra -Werror $< -o $@
@@ -162,6 +228,29 @@ $(BUILD)/page-tables-test.exe: tests/kernel/memory/page_tables_test.c \
 	kernel/mm/page_tables.c kernel/mm/page_tables.h | $(BUILD)/.dir
 	$(CLANG) -Ikernel/mm -std=c11 -Wall -Wextra -Werror \
 		tests/kernel/memory/page_tables_test.c kernel/mm/page_tables.c -o $@
+
+$(BUILD)/kernel-task-test.exe: tests/kernel/task/task_test.c \
+	kernel/task/process.c kernel/task/process.h kernel/task/thread.c \
+	kernel/task/thread.h kernel/task/scheduler.c kernel/task/scheduler.h \
+	kernel/security/capability.c kernel/security/capability.h \
+	kernel/arch/x86_64/context_switch.h | $(BUILD)/.dir
+	$(CLANG) -std=c11 -Wall -Wextra -Werror -Ikernel/task -Ikernel/security \
+		-Ikernel/log -Ikernel/panic -Ikernel/arch/x86_64 \
+		tests/kernel/task/task_test.c kernel/task/process.c \
+		kernel/task/thread.c kernel/task/scheduler.c \
+		kernel/security/capability.c -o $@
+
+$(BUILD)/kernel-ipc-test.exe: tests/kernel/ipc/ipc_test.c \
+	kernel/ipc/channel.c kernel/ipc/channel.h \
+	kernel/task/process.c kernel/task/process.h kernel/task/thread.c \
+	kernel/task/thread.h kernel/task/scheduler.c kernel/task/scheduler.h \
+	kernel/security/capability.c kernel/security/capability.h \
+	kernel/arch/x86_64/context_switch.h | $(BUILD)/.dir
+	$(CLANG) -std=c11 -Wall -Wextra -Werror -Ikernel/task -Ikernel/security \
+		-Ikernel/ipc -Ikernel/log -Ikernel/panic -Ikernel/arch/x86_64 \
+		tests/kernel/ipc/ipc_test.c kernel/ipc/channel.c \
+		kernel/task/process.c kernel/task/thread.c kernel/task/scheduler.c \
+		kernel/security/capability.c -o $@
 
 $(BUILD)/panic-test-main.o: tests/kernel/panic_qemu_main.c \
 	include/orion/boot_info.h kernel/console/serial.h kernel/log/log.h \
@@ -202,7 +291,7 @@ $(BUILD)/de-test-main.o: tests/kernel/panic_qemu_main.c \
 $(BUILD)/panic-test-kernel.elf: $(BUILD)/entry.o $(BUILD)/serial.o \
 	$(BUILD)/log.o $(BUILD)/panic.o $(BUILD)/fatal.o $(BUILD)/gdt.o \
 	$(BUILD)/idt.o $(BUILD)/interrupts.o $(BUILD)/exceptions.o \
-	$(BUILD)/cpu_state.o \
+	$(BUILD)/cpu_state.o $(KERNEL_TASKING_OBJECTS) \
 	$(BUILD)/panic-test-main.o \
 	kernel/linker.ld
 	$(LLD) -m elf_x86_64 -T kernel/linker.ld --no-undefined --build-id=none \
@@ -211,7 +300,7 @@ $(BUILD)/panic-test-kernel.elf: $(BUILD)/entry.o $(BUILD)/serial.o \
 $(BUILD)/gp-test-kernel.elf: $(BUILD)/entry.o $(BUILD)/serial.o \
 	$(BUILD)/log.o $(BUILD)/panic.o $(BUILD)/fatal.o $(BUILD)/gdt.o \
 	$(BUILD)/idt.o $(BUILD)/interrupts.o $(BUILD)/exceptions.o \
-	$(BUILD)/cpu_state.o \
+	$(BUILD)/cpu_state.o $(KERNEL_TASKING_OBJECTS) \
 	$(BUILD)/gp-test-main.o kernel/linker.ld
 	$(LLD) -m elf_x86_64 -T kernel/linker.ld --no-undefined --build-id=none \
 		-o $@ $(filter %.o,$^)
@@ -219,7 +308,7 @@ $(BUILD)/gp-test-kernel.elf: $(BUILD)/entry.o $(BUILD)/serial.o \
 $(BUILD)/ud-test-kernel.elf: $(BUILD)/entry.o $(BUILD)/serial.o \
 	$(BUILD)/log.o $(BUILD)/panic.o $(BUILD)/fatal.o $(BUILD)/gdt.o \
 	$(BUILD)/idt.o $(BUILD)/interrupts.o $(BUILD)/exceptions.o \
-	$(BUILD)/cpu_state.o \
+	$(BUILD)/cpu_state.o $(KERNEL_TASKING_OBJECTS) \
 	$(BUILD)/ud-test-main.o kernel/linker.ld
 	$(LLD) -m elf_x86_64 -T kernel/linker.ld --no-undefined --build-id=none \
 		-o $@ $(filter %.o,$^)
@@ -227,7 +316,7 @@ $(BUILD)/ud-test-kernel.elf: $(BUILD)/entry.o $(BUILD)/serial.o \
 $(BUILD)/df-test-kernel.elf: $(BUILD)/entry.o $(BUILD)/serial.o \
 	$(BUILD)/log.o $(BUILD)/panic.o $(BUILD)/fatal.o $(BUILD)/gdt.o \
 	$(BUILD)/idt.o $(BUILD)/interrupts.o $(BUILD)/exceptions.o \
-	$(BUILD)/cpu_state.o \
+	$(BUILD)/cpu_state.o $(KERNEL_TASKING_OBJECTS) \
 	$(BUILD)/df-test-main.o kernel/linker.ld
 	$(LLD) -m elf_x86_64 -T kernel/linker.ld --no-undefined --build-id=none \
 		-o $@ $(filter %.o,$^)
@@ -235,7 +324,7 @@ $(BUILD)/df-test-kernel.elf: $(BUILD)/entry.o $(BUILD)/serial.o \
 $(BUILD)/pf-test-kernel.elf: $(BUILD)/entry.o $(BUILD)/serial.o \
 	$(BUILD)/log.o $(BUILD)/panic.o $(BUILD)/fatal.o $(BUILD)/gdt.o \
 	$(BUILD)/idt.o $(BUILD)/interrupts.o $(BUILD)/exceptions.o \
-	$(BUILD)/cpu_state.o \
+	$(BUILD)/cpu_state.o $(KERNEL_TASKING_OBJECTS) \
 	$(BUILD)/pf-test-main.o kernel/linker.ld
 	$(LLD) -m elf_x86_64 -T kernel/linker.ld --no-undefined --build-id=none \
 		-o $@ $(filter %.o,$^)
@@ -243,14 +332,25 @@ $(BUILD)/pf-test-kernel.elf: $(BUILD)/entry.o $(BUILD)/serial.o \
 $(BUILD)/de-test-kernel.elf: $(BUILD)/entry.o $(BUILD)/serial.o \
 	$(BUILD)/log.o $(BUILD)/panic.o $(BUILD)/fatal.o $(BUILD)/gdt.o \
 	$(BUILD)/idt.o $(BUILD)/interrupts.o $(BUILD)/exceptions.o \
-	$(BUILD)/cpu_state.o \
+	$(BUILD)/cpu_state.o $(KERNEL_TASKING_OBJECTS) \
 	$(BUILD)/de-test-main.o kernel/linker.ld
+	$(LLD) -m elf_x86_64 -T kernel/linker.ld --no-undefined --build-id=none \
+		-o $@ $(filter %.o,$^)
+
+$(BUILD)/nx-test-kernel.elf: $(filter-out $(BUILD)/active_page_tables.o,$(KERNEL_OBJECTS)) \
+	$(BUILD)/nx-active-page-tables.o kernel/linker.ld
+	$(LLD) -m elf_x86_64 -T kernel/linker.ld --no-undefined --build-id=none \
+		-o $@ $(filter %.o,$^)
+
+$(BUILD)/readonly-test-kernel.elf: $(filter-out $(BUILD)/active_page_tables.o,$(KERNEL_OBJECTS)) \
+	$(BUILD)/readonly-active-page-tables.o kernel/linker.ld
 	$(LLD) -m elf_x86_64 -T kernel/linker.ld --no-undefined --build-id=none \
 		-o $@ $(filter %.o,$^)
 
 test-unit: $(BUILD)/boot-info-test.exe $(BUILD)/kernel-log-test.exe \
 	$(BUILD)/kernel-panic-test.exe $(BUILD)/kernel-memory-test.exe \
-	$(BUILD)/page-tables-test.exe
+	$(BUILD)/page-tables-test.exe $(BUILD)/kernel-task-test.exe \
+	$(BUILD)/kernel-ipc-test.exe
 	@powershell.exe -NoProfile -ExecutionPolicy Bypass -File scripts/test-kernel-unit.ps1 \
 		-BuildDirectory "$(BUILD)"
 
@@ -262,7 +362,8 @@ test-panic-qemu: check-tools $(BOOT_DIR)/BOOTX64.EFI $(ESP)/kernel.elf \
 test-exceptions-qemu: check-tools $(BOOT_DIR)/BOOTX64.EFI \
 	$(ESP)/kernel.elf $(BUILD)/gp-test-kernel.elf $(BUILD)/ud-test-kernel.elf \
 	$(BUILD)/df-test-kernel.elf $(BUILD)/pf-test-kernel.elf \
-	$(BUILD)/de-test-kernel.elf
+	$(BUILD)/de-test-kernel.elf $(BUILD)/nx-test-kernel.elf \
+	$(BUILD)/readonly-test-kernel.elf
 	@powershell.exe -NoProfile -ExecutionPolicy Bypass -File scripts/test-kernel-exceptions.ps1 \
 		-ToolchainHome "$(TOOLCHAIN_HOME)" -BuildDirectory "$(BUILD)"
 

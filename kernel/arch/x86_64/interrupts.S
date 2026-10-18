@@ -79,6 +79,7 @@ ISR_NO_ERROR 28
 ISR_ERROR 29
 ISR_ERROR 30
 ISR_NO_ERROR 31
+ISR_NO_ERROR 32
 
 .global orion_x86_64_interrupt_common
 .type orion_x86_64_interrupt_common,@function
@@ -144,4 +145,5 @@ orion_x86_64_isr_stub_table:
     .quad orion_x86_64_isr_26, orion_x86_64_isr_27
     .quad orion_x86_64_isr_28, orion_x86_64_isr_29
     .quad orion_x86_64_isr_30, orion_x86_64_isr_31
+    .quad orion_x86_64_isr_32
 .size orion_x86_64_isr_stub_table, .-orion_x86_64_isr_stub_table

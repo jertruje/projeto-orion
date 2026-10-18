@@ -63,6 +63,8 @@ bool orion_x86_64_idt_init(void)
         set_gate(vector, orion_x86_64_isr_stub_table[vector],
                  vector == 8U ? 1U : 0U);
     }
+    set_gate(ORION_X86_64_TIMER_VECTOR,
+             orion_x86_64_isr_stub_table[ORION_X86_64_TIMER_VECTOR], 0);
 
     idtr.limit = sizeof(idt) - 1U;
     idtr.base = (uintptr_t)idt;
@@ -83,6 +85,15 @@ bool orion_x86_64_idt_init(void)
             (vector != 8U && idt[vector].ist != 0U)) {
             return false;
         }
+    }
+    if (idt[ORION_X86_64_TIMER_VECTOR].selector !=
+            ORION_X86_64_KERNEL_CODE_SELECTOR ||
+        idt[ORION_X86_64_TIMER_VECTOR].attributes != 0x8eU ||
+        idt[ORION_X86_64_TIMER_VECTOR].ist != 0U ||
+        (idt[ORION_X86_64_TIMER_VECTOR].offset_low == 0 &&
+         idt[ORION_X86_64_TIMER_VECTOR].offset_middle == 0 &&
+         idt[ORION_X86_64_TIMER_VECTOR].offset_high == 0)) {
+        return false;
     }
     idt_initialized = true;
     orion_x86_64_nmi_restore();

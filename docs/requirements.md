@@ -49,7 +49,8 @@ idle.
 | OR-SCHED-01 | Round-robin cooperativo precede qualquer preempção; estados e filas preservam invariantes. | 9 | Teste de sequência de scheduling e contadores. |
 | OR-TIME-01 | Timer e preempção só ativam após IDT, EOI, frame e retorno/interrupção validados. | 10 | Teste QEMU em uma vCPU com múltiplas threads e métricas. |
 | OR-SMP-01 | Nenhuma thread pode ser executada simultaneamente por duas CPUs. | 10+ | Testes repetidos com múltiplas vCPUs, sincronização e identificação por CPU. |
-| OR-SEC-01 | Privilégios, capacidades e acesso a hardware são concedidos explicitamente. | 11+ | Testes negativos de autoridade; ainda não implementado. |
+| OR-SEC-01 | Privilégios, capacidades e acesso a hardware são concedidos explicitamente. | 11+ | Fase 11 valida capacidades internas; isolamento de usuário e authority de dispositivos ainda não implementados. |
+| OR-IPC-01 | Comunicação de kernel ocorre por canais limitados, capability-protected e com falhas de fila/endpoint explícitas. | 12 | Testes host de payload, direitos, quotas e lifecycle; troca entre threads do kernel observada em QEMU. Ring 3 permanece fora do escopo atual. |
 | OR-REL-01 | Recuperação só é alegada quando falha é contida, estado íntegro é verificado e serviço volta a responder. | 13+ | Injeção de falhas, taxa e tempo medidos, integridade verificada. |
 | OR-COMP-01 | Suporte é declarado por modelo/revisão/configuração de dispositivo testado. | 14+ | Inventário de dispositivos e logs reproduzíveis. |
 | OR-BUILD-01 | Builds têm versões/configuração registradas e resultados repetíveis. | 4+ | Builds repetidos, hashes quando aplicável e ambiente descrito. |

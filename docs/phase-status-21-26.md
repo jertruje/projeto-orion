@@ -44,8 +44,9 @@ gerenciador, benchmark, release ou interface fictícios foram adicionados.
   revisado.
 - Gaps de segurança, não achados de vulnerabilidade: imagem do kernel não é
   autenticada criptograficamente; Secure Boot/anti-rollback não foram
-  configurados; existe PMM limitado e gerenciador de page tables não integrado
-  ao CR3, sem isolamento de usuário.
+  configurados; à época daquela revisão, a Fase 8 ainda não tinha o smoke test
+  de page tables no CR3 clonado. O teste de bootstrap foi acrescentado depois,
+  mas continua sem isolamento de usuário.
   GDT/TSS/IDT e handlers de exceções CPU foram adicionados após essa revisão;
   IRQs externos e transições de privilégio continuam ausentes.
 - Limite: resultado negativo numa revisão do scaffold não prova ausência de

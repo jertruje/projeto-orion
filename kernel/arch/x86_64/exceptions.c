@@ -3,13 +3,21 @@
 #include <stdint.h>
 
 #include "cpu_state.h"
+#include "timer.h"
 #include "../../log/log.h"
 #include "../../panic/panic.h"
 
 void orion_x86_64_exception_dispatch(orion_x86_64_exception_frame *frame)
 {
-    if (frame == 0 || frame->vector >= ORION_X86_64_EXCEPTION_COUNT) {
+    if (frame == 0 || frame->vector >= ORION_X86_64_IDT_ENTRY_COUNT) {
         orion_panic_at("EXCEPTION", "invalid exception frame");
+    }
+    if (frame->vector == ORION_X86_64_TIMER_VECTOR) {
+        orion_x86_64_timer_interrupt();
+        return;
+    }
+    if (frame->vector >= ORION_X86_64_EXCEPTION_COUNT) {
+        orion_panic_at("EXCEPTION", "unexpected external interrupt");
     }
 
     (void)orion_log_u64(ORION_LOG_ERROR, "EXCEPTION", "CPU exception vector",

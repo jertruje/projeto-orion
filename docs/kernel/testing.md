@@ -38,10 +38,15 @@ checks #DF dispatch through IST1. These are path checks, not stability,
 performance, hardware, or general fault-injection results.
 
 Normal QEMU boot validates its actual UEFI map, initializes the physical
-bitmap, checks allocator invariants, and allocates/releases one page. The
-page-table unit test is not a live page walk: the virtual manager is not
-attached to CR3, so live mappings and hardware permission enforcement remain
-unverified.
+bitmap, checks allocator invariants, allocates/releases one page, and runs an
+active-CR3 map/write/lookup/unmap smoke test using a clone of the inherited
+PML4. Isolated QEMU images verify read-only-write #PF(3) and NX-fetch #PF(17).
+Normal QEMU boot also starts two cooperative kernel threads and validates the
+alternating serial trace, independent stack canaries, local-state/argument
+preservation, termination and return to the bootstrap context. The
+implementation remains limited to the tested QEMU/EDK2 setup; it does not
+provide user isolation, independent process roots, timer preemption, or SMP
+TLB safety.
 
 `mingw32-make validate-docs` checks required documentation, phase rows,
 traceability, Markdown links and architecture documents.

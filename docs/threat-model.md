@@ -19,7 +19,7 @@ não há isolamento entre processos.
 | ID | Ameaça | Escopo inicial | Mitigação futura/necessária | Estado atual |
 |---|---|---|---|---|
 | TH-01 | Aplicação/processo malicioso ou comprometido | Dentro do escopo do objetivo | Separação user/kernel, page tables, capacidades, limites de recursos, testes negativos. | Sem processos/isolamento. |
-| TH-02 | Leitura/escrita de memória não autorizada | Dentro | Page tables verificadas, validação de ponteiros/handles, invariantes e fuzzing. | Sem gerenciador de memória próprio. |
+| TH-02 | Leitura/escrita de memória não autorizada | Dentro | Page tables verificadas, validação de ponteiros/handles, invariantes e fuzzing. | Há gerenciamento de memória de bootstrap, mas não address spaces de usuário, validação de ponteiros de processo ou isolamento. |
 | TH-03 | Escalada de privilégios | Dentro | Mínima autoridade, validação de syscall/IPC, transições de privilégio e testes de abuso. | Não aplicável a user mode ainda. |
 | TH-04 | Driver defeituoso/comprometido | Dentro, progressivo | Driver isolado quando viável; DMA restrito por IOMMU quando suportado; watchdog e recuperação segura. | Sem drivers. |
 | TH-05 | Mensagem IPC malformada | Dentro | Parsing por comprimento/versão, quotas, fuzzing, cancelamento/timeout bem definidos. | Sem IPC. |

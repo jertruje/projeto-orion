@@ -1,9 +1,10 @@
-# ORION OS — estado verificável das fases 1–10
+# ORION OS — estado verificável das fases 1–11
 
-**Escopo deste registro:** lote solicitado pelo usuário, fases 1–10.  
-**Estado geral do lote:** INCOMPLETO. Fases 1–7 têm evidência suficiente para
-ser consideradas concluídas nos escopos limitados descritos abaixo; as Fases
-8–10 não estão concluídas.
+**Escopo deste registro:** evidência registrada para fases 1–11.
+**Estado geral:** INCOMPLETO. Fases 1–10 passaram somente nos escopos
+limitados descritos abaixo. A Fase 11 tem uma base interna de capabilities
+implementada e testada, mas não fornece isolamento de usuário e não atende
+integralmente ao gate de segurança.
 
 ## Evidência observada no workspace
 
@@ -33,12 +34,16 @@ ser consideradas concluídas nos escopos limitados descritos abaixo; as Fases
   long-mode/paging, PAE, IF), usa logger serial limitado, panic fail-stop e
   loop `cli; hlt`. A Fase 7 agora carrega GDT/TSS/IDT próprios, mantém IF
   desabilitado e passou por testes QEMU isolados das exceções suportadas.
-- A Fase 8 está parcialmente implementada: mapa UEFI validado, alocador
-  físico de páginas de 4 KiB, operações de page-table em quatro níveis e
-  diagnóstico ampliado de #PF. As tabelas virtuais ainda não estão ligadas ao
-  CR3 ativo e não há endereço virtual próprio/user mode.
-- O kernel ainda não tem processos, threads, scheduler, timer, controladores
-  externos inicializados ou suporte SMP.
+- A Fase 8 foi validada no escopo de memória de bootstrap: mapa UEFI, alocador
+  físico de páginas de 4 KiB e operações de page-table em quatro níveis,
+  exercitadas em um PML4 clonado instalado no CR3 e em falhas QEMU de páginas
+  RO/NX. Isso não implementa isolamento de processos, user mode ou um layout
+  virtual independente; a identidade física/virtual do pool estático só foi
+  observada em QEMU/EDK2.
+- A Fase 9 implementa um processo kernel organizacional e threads kernel com
+  troca cooperativa round-robin single-CPU, pilhas separadas e teste de
+  alternância real em QEMU. Não há processos de usuário, timer, preempção,
+  IRQs externos ou suporte SMP.
 - A execução de `git status` e `git rev-parse` antes da inicialização do
   repositório retornou “not a git repository”. A ferramenta Git está
   disponível. Nenhum commit ou histórico anterior foi observado.
@@ -54,9 +59,11 @@ ser consideradas concluídas nos escopos limitados descritos abaixo; as Fases
 | 5 — Boot UEFI | CONCLUÍDA no alvo QEMU mínimo | Teste serial QEMU confirmou a cadeia loader→ELF kernel, `ExitBootServices` e execução do kernel. Robustez do parser ELF, hardening e hardware físico continuam limitados. |
 | 6 — Núcleo do kernel | CONCLUÍDA no escopo mínimo documentado | Módulos e contratos documentados; sequência monotônica, validação boot-info/CPU/stack; testes host de estado, logger e panic; ELF64 x86-64 sem símbolos indefinidos; QEMU normal chega a `IDLE`; panic real testado em imagem separada. Limites em `docs/kernel/testing.md`. |
 | 7 — GDT, IDT e exceções | CONCLUÍDA no escopo CPU-exception, IRQs externas desabilitadas | GDT/TSS e IDT próprias carregadas e lidas de volta; IST1 de double fault; stubs 0–31 com normalização/código de erro; interfaces IF query/cli/sti presentes (sti não chamado); QEMU isolado confirmou #BP com retorno, #DE, #UD, #GP + erro 1034, #PF + CR2, e #DF por falha encadeada de entrega; IF continua desabilitado. Sem PIC/APIC, IRQ externa, user mode ou proteção por paginação. |
-| 8 — Memória física e virtual | INCOMPLETA | Validação do mapa UEFI e PMM bitmap reservado por padrão (4 GiB) integrado ao boot; testes host cobrem alloc/free/exhaustion/invalid-free. Page-table manager 4-level passa testes host para map/lookup/unmap, W^X, permissões e rollback OOM. QEMU confirma mapa, invariantes e allocate/release; #PF grava CR2 e decodifica bits. Falta exercício do page-table manager contra o CR3/tabelas ativos em QEMU e mapeamento virtual próprio; não foi feita troca de CR3. |
-| 9 — Processos e threads | BLOQUEADA POR PRÉ-REQUISITOS | Fase 8 ainda incompleta quanto ao uso de page tables ativas; não há estruturas de thread, troca de contexto, scheduler ou user mode. |
-| 10 — Timer, preempção e multicore | BLOQUEADA POR PRÉ-REQUISITOS | Requer IDT/controlador, scheduler e troca de contexto seguros, ainda ausentes. Não há timer, preempção ou APs inicializados. |
+| 8 — Memória física e virtual | CONCLUÍDA NO ESCOPO DE BOOTSTRAP | Mapa UEFI validado; PMM com bitmap reservado por padrão (4 GiB); testes host de alloc/free/exhaustion/invalid-free e page tables; smoke QEMU de map/write/lookup/unmap após clonar o PML4 e instalar o CR3; faults QEMU RO (#PF 3) e NX (#PF 17). Sem user isolation, demanda, SMP shootdown ou validação fora de QEMU/EDK2; detalhes em `docs/memory/`. |
+| 9 — Processos e threads | CONCLUÍDA NO ESCOPO COOPERATIVO DE KERNEL | Processo kernel único como contêiner organizacional; pool bounded de TCBs/stacks, estados validados, fila FIFO round-robin, troca SysV AMD64 cooperativa, trampoline/retorno controlado e destruição pós-switch. Host tests e QEMU provam alternância real, argumentos, stack-local preservada, término, fila vazia e invariantes. Sem user mode/isolamento, criação de processos, timer/preempção, general block/wakeup ou SMP. |
+| 10 — Timer, preempção e multicore | CONCLUÍDA NO ESCOPO DE PREEMPÇÃO SINGLE-CORE; MULTICORE BLOQUEADO | PIT channel 0 + PIC IRQ0, vector IDT 32, EOI antes de scheduling, IF-safe queue updates e FIFO preemptivo; QEMU `-smp 1` prova workers CPU-bound sem yield, contexto/stack, fila vazia e métricas TSC/ticks. Sem AP startup, SMP synchronization, APIC/IOAPIC ou hardware físico testado. |
+| 11 — Capabilities e isolamento | PARCIAL, TESTADA NO ESCOPO INTERNO DO KERNEL | Tabelas bounded por processo/objeto/slot/lease; handles locais com gerações; type/right checks; derivação e transferência em subset; revogação global e destruição adiada por lease. Host tests e self-test QEMU passam. Sem Ring 3, address spaces independentes, syscalls, device/memory mediation ou SMP; isolamento efetivo pendente. |
+| 12 — IPC | PARCIAL, TESTADO PARA THREADS DO KERNEL | Canais full-duplex limitados, filas FIFO copiadas e capabilities SEND/RECEIVE/QUERY/CLOSE; host negatives e troca real entre duas kernel threads em QEMU. Não há bloqueio/despertar, IPC Ring 3, transferência de capabilities em mensagens, cleanup de processo ou SMP. |
 
 ## Comandos de build e teste
 
@@ -128,6 +135,14 @@ mingw32-make test-unit build inspect test-boot test-panic-qemu test-exceptions-q
   documentos, 18 ADRs, 65 links locais). Isso não demonstra page-table walks
   do CR3 ativo.
 
+mingw32-make test-unit build inspect test-tasking-qemu
+  Resultado: exit code 0; testes host incluíram limite de threads, stacks,
+  transições inválidas e invariantes; ELF64 x86-64 sem símbolos indefinidos;
+  QEMU 11.1.2 permaneceu 15 s no teste. A trace serial confirmou as oito
+  execuções `2,3,2,3,2,3,2,3`, com iterações 0–3 por thread; ambas terminaram
+  com exit code 0, a pilha bootstrap retomou e as invariantes passaram.
+  QEMU round-robin alternation trace: PASS. Sem preempção ou benchmark.
+
 git init
   Resultado na inspeção inicial: repositório criado em
   C:\Users\danim\Downloads\projeto orion\.git; branch inicial master, sem
@@ -147,12 +162,12 @@ isolado que não iniciou o loader; o harness final usa o ESP validado, exige
 serial não vazia, restaura o kernel normal mesmo em falha e observa cada VM
 por 15 s. Os alvos finais passaram.
 
-**Medições:** nenhum benchmark de desempenho foi executado. O kernel não tem
-timer estável, scheduler ou workloads representativos; medir esse loop/QEMU
-não daria uma comparação significativa. Os testes de exceção são checks
-negativos de confiabilidade/baixo nível, não uma auditoria de segurança
-abrangente. Não há isolamento de usuário, capabilities ou paginação própria
-para testar.
+**Medições até o fechamento da Fase 9:** nenhum benchmark de desempenho foi
+executado nessa etapa. Os testes de exceção são checks negativos de
+confiabilidade/baixo nível, não uma auditoria de segurança abrangente. Não há
+isolamento de usuário, capabilities ou paginação própria para testar. Os
+diagnósticos temporais da Fase 10, registrados abaixo, não são benchmarks de
+desempenho nem comparação com Linux.
 
 ## Relatório da Fase 2
 
@@ -319,7 +334,100 @@ implementação do kernel ou bootloader foi alterado.
 - A Fase 4 está concluída no escopo do gate local; manter segundo host/CI e
   pinagem de versões como pendências de portabilidade/release.
 - Fortalecer o contrato de boot/parser e adicionar testes de parser e boot-info.
-- Implementar e testar, em sequência, Fases 6, 7 e 8.
-- Só então começar Fase 9; manter preempção e multicore desabilitados até
-  existir um caminho de interrupção/context switch demonstravelmente correto.
-- Concluir Fase 10 com testes multi-vCPU e métricas, não apenas compilação.
+- Fases 6–9 e a preempção single-core da Fase 10 têm evidência nos escopos
+  limitados registrados acima.
+- Antes de declarar multicore concluído, implementar AP topology/startup,
+  per-CPU state, local interrupt controllers, SMP-safe ownership/TLB policy e
+  repetir os testes com múltiplas vCPUs.
+
+## Relatório da Fase 10
+
+**Estado:** CONCLUÍDA NO ESCOPO DE PREEMPÇÃO SINGLE-CORE; MULTICORE
+BLOQUEADO, NÃO IMPLEMENTADO.
+
+- **Política:** FIFO round-robin cooperativa e preemptiva, uma fila por boot
+  single-CPU. Um PIT IRQ0 rota a thread corrente quando existe outro ready.
+- **Timer:** PIT channel 0, divisor 11.932; PIC 8259 remapeado para 0x20/0x28,
+  somente IRQ0 não mascarado durante o teste; vector IDT 32 e EOI antes de
+  preempção. Frequência nominal ~99,9985 Hz (~10,00015 ms), não medida em
+  hardware físico.
+- **Preempção observada:** dois workers CPU-bound terminaram >=1.000.000
+  iterações cada, sem `yield`; QEMU verificou timer ticks, preempções, stack,
+  término e o retorno do timer sem threads prontas. O serial verifier exige
+  os valores não-zero e os limites.
+- **Multicore:** uma vCPU testada. AP startup/topology, per-CPU scheduler e
+  sincronização inter-CPU faltam; `-smp 2` não foi habilitado e não se declara
+  suporte funcional.
+- **Medições:** número de IRQs/preempções e runtime ticks por thread; TSC
+  virtual para amostras do dispatcher PIT sem reschedule e handoff médio do
+  scheduler. O TSC não tem frequência calibrada, inclui overhead de medição e
+  não fornece latência física nem comparação de desempenho.
+- **Uma execução da suíte final:** 7 PIT ticks, 3 timer-driven preemptions, 4
+  amostras sem troca (média 104.778 e máximo 262.663 TSC virtual cycles),
+  2.003 dispatches no benchmark de handoff (média observada 6.633 TSC cycles
+  por dispatch), e progresso de 1.191.960/1.000.000 iterações nos dois
+  workers. Esses números são evidência de funcionamento nessa execução QEMU,
+  não limites, distribuição estatística ou benchmark comparativo.
+- **Comando dedicado:** `mingw32-make test-preemption-qemu`.
+- **Pendências:** APs/SMP, APIC/IOAPIC e IRQs de dispositivo, estados FPU/SIMD,
+  cobertura longa e hardware físico.
+- **Fase 11:** implementação interna parcial; critérios dependentes de Ring 3,
+  address spaces e isolamento efetivo permanecem pendentes.
+
+## Relatório da Fase 11
+
+**Estado:** PARCIALMENTE IMPLEMENTADA E TESTADA; NÃO APROVADA COMO ISOLAMENTO
+DE PROCESSOS OU SEGURANÇA COMPLETA.
+
+- Foram adicionadas tabelas estáticas bounded para 8 processos, 32 slots por
+  processo, 64 objetos e 64 leases.
+- Handles opacos validam tabela/proprietário, geração da tabela, slot, geração
+  do slot, geração/estado do objeto, tipo e direitos. Slots são aposentados
+  antes de wrap.
+- Derivação e transferência exigem direitos explícitos e só permitem
+  subconjuntos. Revogação remove todos os slots do objeto; leases já obtidos
+  permanecem válidos até release e adiam o destrutor.
+- Inicialização/invariantes estão integradas ao processo kernel. Criação
+  inicial de objetos é kernel-only.
+- Testes host e autoteste de inicialização QEMU cobrem concessão válida,
+  negativas de tipo/direitos/handle, falsificação/reuso, derivação,
+  transferência, limites, leases, revogação, destrutor diferido e invariantes.
+- `mingw32-make test-unit build inspect` passou. A execução combinada de
+  `mingw32-make test-boot test-tasking-qemu test-preemption-qemu
+  test-panic-qemu test-exceptions-qemu` passou; a serial QEMU incluiu
+  `Capability checks and revocation passed`. O harness encerra cada VM após
+  sua janela observacional.
+- Nenhuma medição de desempenho foi feita. Não houve teste de concorrência SMP,
+  acesso entre processos, CPL3 ou páginas protegidas a partir de usuário.
+- Dependências seguintes: terminar isolamento de address spaces e Ring 3 antes
+  de declarar capabilities como fronteira contra processos hostis; Fase 12
+  deve construir IPC sobre autoridade validada, com quotas, validação de
+  mensagens e teardown.
+
+## Relatório da Fase 12
+
+**Estado:** PARCIALMENTE IMPLEMENTADA E TESTADA; NÃO É IPC DE APLICAÇÕES.
+
+- O kernel possui canais full-duplex com endpoint capabilities, filas FIFO
+  estáticas e cópia bounded de mensagens opacas.
+- Operações não bloqueantes fornecem resultados explícitos para fila vazia/
+  cheia, peer fechado, endpoint encerrado, buffer curto, argumento inválido,
+  autorização negada, handle inválido e exaustão.
+- Cada payload aceita 0–256 bytes; cada endpoint mantém até 8 mensagens.
+  Existem 8 canais globais (32 KiB de payload máximo no conjunto); a criação
+  não usa heap e reporta esgotamento atomicamente.
+- `SEND`, `RECEIVE`, `QUERY` e `CLOSE` são direitos explícitos de endpoint.
+  Fechar invalida todas as cópias daquele endpoint; mensagens já destinadas
+  ao peer aberto podem ser drenadas antes de `PEER_CLOSED`.
+- A sincronização salva/desabilita/restaura IF em seções curtas, válida apenas
+  para o kernel single-core. Não há wait queues ou bloqueio/despertar; as
+  operações nunca esperam ocupadamente.
+- `mingw32-make test-unit build inspect` passou, incluindo testes de direitos,
+  payloads, fila, lifecycle, exaustão e isolamento entre canais.
+- `mingw32-make test-boot` passou com duas threads reais do kernel alternando
+  quatro envios/recebimentos e validando os bytes em runtime QEMU.
+- Não foram testados user buffers, processos independentes, bloqueio/
+  despertamento, transferência de capabilities dentro de mensagens,
+  concorrência SMP ou desempenho.
+- Fase 13 depende de lifecycle de processo/serviço e supervisor; canal fechado
+  gera erro explícito, mas não reinicia componentes nem garante recuperação.

@@ -8,6 +8,7 @@ bool orion_x86_64_validate_entry_state(uintptr_t stack_bottom,
                                        uintptr_t stack_top);
 bool orion_x86_64_nx_enabled(void);
 uint64_t orion_x86_64_read_cr3(void);
+void orion_x86_64_write_cr3(uint64_t cr3_value);
 bool orion_x86_64_uses_four_level_paging(void);
 
 #endif

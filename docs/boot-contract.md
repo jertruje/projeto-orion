@@ -25,9 +25,11 @@ portabilidade a firmware físico.
   valida limites, overflow e sobreposição e libera para alocação apenas
   `EfiConventionalMemory` abaixo de 4 GiB. Kernel/loader/boot-map continuam
   reservados por seus tipos UEFI não convencionais.
-- A Fase 8 possui bitmap físico e page-table manager com testes host; o manager
-  virtual ainda não opera sobre o CR3 herdado. A paginação atual continua
-  inalterada.
+- A Fase 8 possui bitmap físico e page-table manager com testes host. No
+  caminho QEMU com NX habilitado, o kernel copia o PML4 herdado para um root
+  estático reservado, preserva as entradas herdadas, troca o CR3 para essa
+  cópia e testa um mapeamento temporário. Isso não cria um espaço de processo
+  nem estabelece um layout virtual independente.
 - Kernel escreve diretamente na UART COM1 (0x3f8) do ambiente QEMU e para no
   loop `cli; hlt`.
 
@@ -40,8 +42,11 @@ portabilidade a firmware físico.
   alinhamento e casos adversariais ainda exigem revisão/fuzzing.
 - O código depende de detalhes de ABI UEFI x64 e de firmware QEMU/EDK2.
 - Não há garantias sobre page tables/identity map de outros firmwares. O
-  kernel detecta se NX e EFER.NXE estão ativos no CPU testado, mas não altera
-  EFER/CR3 nem assume identidade entre endereços virtuais e físicos.
+  kernel detecta se NX e EFER.NXE estão ativos no CPU testado, não altera
+  EFER e não habilita NX por conta própria. O adaptador de paginação assume
+  que suas tabelas estáticas podem ser acessadas por endereço virtual igual ao
+  físico; isso passou no QEMU/EDK2 observado, mas não foi comprovado em outros
+  firmwares ou hardware.
 - A stack é reservada estaticamente no ELF; não há guard page.
 - Um page fault não tratado continua fatal; não há demand paging ou recovery.
 

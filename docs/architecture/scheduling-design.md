@@ -12,8 +12,10 @@ processes require actual CPL3 entry/return and separate page tables.
 Bring-up starts with a single-CPU, cooperative round-robin queue for kernel
 threads after the context-switch ABI, stack lifecycle and allocator have been
 verified. Threads are `NEW`, `READY`, `RUNNING`, `BLOCKED`, `TERMINATED`;
-transitions are centralized. Idle runs only when no runnable thread exists. A
-thread cannot free its active stack; cleanup is deferred to another context.
+transitions are centralized. The current bounded run-ready path returns to the
+bootstrap thread when its initial ready queue empties; that thread then enters
+the existing halt loop. A thread cannot free its active stack; cleanup is
+deferred to another context.
 
 The intended general-purpose baseline is preemptive round-robin on one CPU,
 with a monotonic timer, bounded scheduling quantum and no user-controlled
@@ -41,10 +43,23 @@ latency distribution, CPU/idle time, throughput, starvation interval and
 preemption-disabled critical duration. Record clock source and resolution.
 Logging is excluded from hot-path timing or separately measured.
 
+## Phase 9–10 implementation status
+
+The kernel now has one static kernel process, a bounded pool of kernel-thread
+records/stacks, a FIFO ready queue, and an ABI-defined cooperative switch. A
+PIT channel-0 timer is routed through the remapped legacy PIC to IDT vector 32.
+QEMU demonstrates timer preemption of two CPU-bound workers with no yields,
+along with timer/handler/scheduler counters and a bounded TSC measurement.
+Round-robin and IRQ delivery are implemented and tested only on one QEMU CPU.
+The timer is masked after the boot self-tests; user mode, general
+blocked-thread wakeup, AP startup, SMP, affinity and migration remain
+unimplemented.
+
 ## Safety gates
 
-Do not enable interrupts until IDT entries, controller setup/EOI, stack/frame,
-return path and panic behavior are tested. Do not preempt within non-reentrant
-critical sections. Do not start APs until per-CPU stack, GDT/TSS, IDT, local
-interrupt controller and scheduler ownership are ready. Current kernel is a
-single idle execution context; no scheduling claims apply.
+The boot self-test enables interrupts only after the IDT vector, PIT/PIC setup,
+EOI, stack/frame and return path are ready, then masks the timer before idle.
+Scheduler mutations mask local interrupts. Do not start APs until per-CPU
+stack, GDT/TSS, IDT, local interrupt controller, memory/TLB ownership and
+cross-CPU scheduler synchronization are implemented and tested. No user-mode
+or multicore guarantee follows from the single-CPU preemption result.

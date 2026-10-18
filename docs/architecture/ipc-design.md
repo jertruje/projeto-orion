@@ -1,16 +1,17 @@
 # IPC architecture baseline
 
-**Status:** protocol architecture only; no IPC implementation exists.
+**Status:** ADR-0010 still describes the planned request/reply protocol.
+Phase 12 implements only bounded, non-blocking kernel-thread messaging; there
+is no user ABI or request/reply protocol. See
+[the implementation architecture](../ipc/architecture.md).
 
 ## Selected initial mechanism
 
-Begin with bounded synchronous request/reply messages copied through validated
-caller buffers. Messages have a fixed-width header (`protocol_id`, major/minor
-version, opcode, payload length, request ID, flags) and an explicitly defined
-payload schema. Avoid serializing native pointers or compiler-dependent structs.
-Kernel validates all lengths, arithmetic, endpoint generation, rights and
-queue quota before copying. Unknown major version/opcode returns an explicit
-error; compatible minor extensions require a specified optional-field rule.
+The planned service protocol remains bounded synchronous request/reply
+messages copied through validated caller buffers. Its fixed-width header
+(`protocol_id`, major/minor version, opcode, payload length, request ID, flags)
+and schema are not implemented. The current mechanism carries opaque bytes
+only, with no versioning or opcode interpretation.
 
 Bounded copied messages are the selected control-plane baseline (ADR-0010)
 because their ownership and lifetime are simple. Measure their cost before
@@ -18,7 +19,7 @@ adopting shared memory. Later options:
 
 | Mechanism | Benefit | Risk/cost | Initial status |
 |---|---|---|---|
-| Copied messages | Bounded ownership and simple validation | Copy and kernel entry cost | Selected control-plane baseline; not implemented |
+| Copied messages | Bounded ownership and simple validation | Copy and kernel entry cost | Implemented as bounded internal opaque channel payloads; service protocol not implemented |
 | Referenced buffers | Less copying for larger payloads | Pin/lifetime/TOCTOU and access-right complexity | Defer until measured |
 | Shared memory | High throughput for bulk data | Synchronization, ownership, stale mappings and covert channels | Capability-gated later |
 | Notifications/events | Efficient state change/wakeup | Lost/coalesced event semantics and denial of service | Define separately after scheduler |
@@ -33,9 +34,8 @@ adopting shared memory. Later options:
 - Maximum inline payload, per-endpoint queue depth, per-process outstanding
   requests and aggregate memory are compile-time or policy-bounded values; exact
   values remain open pending workload and memory measurements.
-- Full queue returns `WOULD_BLOCK` or blocks only when the caller requested it
-  and a valid scheduler/wait queue exists. No silent drop for reliable request
-  messages. Notifications may coalesce only if protocol specifies it.
+- Current queue full returns `QUEUE_FULL`; send/receive never block. A future
+  request/reply protocol may add blocking only with a scheduler wait queue.
 - Cancellation carries a request ID and is best-effort; a completed operation
   wins the race. Timeout does not prove the remote side stopped.
 - Endpoint/process teardown marks the endpoint closed, wakes waiters with a
@@ -56,4 +56,5 @@ messages/s, bytes/s, CPU cycles/operation, copy size, queueing delay and
 behavior under saturation. Fix build, CPU, accelerator, vCPU count, guest RAM,
 payload, batch size and clock source. Compare copy/shared-buffer variants only
 when semantics and validation guarantees are equivalent. Current result:
-**not measured; IPC absent**.
+bounded messaging is functionally tested in host and QEMU; latency, throughput,
+jitter and CPU cost are **not measured**.

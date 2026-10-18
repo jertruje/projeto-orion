@@ -11,6 +11,30 @@ orion_x86_64_interrupts_enabled:
     ret
 .size orion_x86_64_interrupts_enabled, .-orion_x86_64_interrupts_enabled
 
+.global orion_x86_64_interrupts_save_disable
+.type orion_x86_64_interrupts_save_disable,@function
+orion_x86_64_interrupts_save_disable:
+    pushfq
+    popq %rax
+    cli
+    andq $0x200, %rax
+    setne %al
+    movzbl %al, %eax
+    ret
+.size orion_x86_64_interrupts_save_disable, .-orion_x86_64_interrupts_save_disable
+
+.global orion_x86_64_interrupts_restore
+.type orion_x86_64_interrupts_restore,@function
+orion_x86_64_interrupts_restore:
+    testq %rdi, %rdi
+    jz .Lrestore_interrupts_disabled
+    sti
+    ret
+.Lrestore_interrupts_disabled:
+    cli
+    ret
+.size orion_x86_64_interrupts_restore, .-orion_x86_64_interrupts_restore
+
 .global orion_x86_64_interrupts_disable
 .type orion_x86_64_interrupts_disable,@function
 orion_x86_64_interrupts_disable:

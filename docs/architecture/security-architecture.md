@@ -19,7 +19,11 @@ flowchart LR
   DEVICE -. DMA boundary depends on IOMMU .-> TCB
 ```
 
-No user/kernel or IOMMU isolation boundary is currently implemented.
+No user/kernel or IOMMU isolation boundary is currently implemented. The
+kernel-internal capability manager was added in Phase 11; it does not yet
+establish a user/kernel boundary or mediate live process, memory, or device
+operations. See the implementation state and test limits in
+[`../security/capability-model.md`](../security/capability-model.md).
 
 ## Authority model
 
@@ -36,7 +40,10 @@ No user/kernel or IOMMU isolation boundary is currently implemented.
 - Capability transfer over IPC is opt-in and names exact rights. Kernel checks
   that the sender possesses those rights and rejects amplification. Each
   process-local slot has a generation so deletion and slot reuse cannot make a
-  stale handle valid.
+  stale handle valid. This remains the intended IPC contract; IPC transfer is
+  not implemented. The Phase 11 kernel-internal API supports attenuation and
+  explicit transfer between registered tables, and revocation invalidates
+  every slot for the object.
 - Revocation semantics are explicit: deleting a slot revokes that holder's
   handle; object-wide revocation increments the object's generation and
   invalidates all handles referring to that object. Revoking a capability to
@@ -79,3 +86,18 @@ channels, side channels or faulty hardware. Formal verification may target a
 small capability/IPC core only after a precise model, invariants and
 implementation correspondence are established; it cannot imply the complete
 system is proved.
+
+## Phase 11 implementation boundary
+
+Implemented: bounded capability tables, process-local handles, object type and
+rights checks, attenuation, transfer, close/revoke, leases, deferred
+destruction and invariant checks. Host tests and the QEMU startup self-test
+exercise these kernel-internal contracts. Synchronization saves/disables IF
+and is single-CPU only.
+
+Not implemented: CPL3, independent per-process address spaces, syscalls, IPC,
+user-originated capability installation, or operation-specific memory/device
+mediation. The type catalog includes future objects; a type/right mask is not
+proof that the corresponding driver or subsystem exists. See
+[`../security/threat-model.md`](../security/threat-model.md) and
+[`../security/privilege-boundaries.md`](../security/privilege-boundaries.md).

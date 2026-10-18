@@ -10,6 +10,8 @@ param(
         '[ORION][CORE][INFO] UEFI boot services have exited',
         '[ORION][MEMORY][INFO] Validated UEFI memory descriptors:',
         '[ORION][MEMORY][INFO] Physical allocate/release smoke test passed',
+        '[ORION][MEMORY][INFO] Active CR3 map/write/lookup/unmap smoke test passed',
+        '[ORION][TASK][INFO] Cooperative round-robin alternation passed',
         '[ORION][CORE][INFO] Minimal kernel is running'
     ),
     [switch]$RequireRunning,

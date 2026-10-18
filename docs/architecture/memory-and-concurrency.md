@@ -15,11 +15,14 @@ checked half-open intervals `[base, end)` with overflow rejection.
    pages only below 4 GiB.
 2. **Implemented, limited:** two static bitmaps track free and allocated
    frames; allocation is single-CPU first-fit.
-3. **Host-tested, not integrated:** page-table operations use four-level
+3. **Implemented and tested, limited:** page-table operations use four-level
    4-KiB tables, typed addresses, canonicality checks, W^X, ownership and TLB
-   callbacks. They do not operate on the inherited active CR3.
-4. Detect/enable NX, establish a safe physical-to-virtual table mapping, and
-   validate live map/unmap permissions before changing the active root.
+   callbacks. A QEMU/EDK2 adapter clones the inherited PML4 and validates
+   temporary live mappings and RO/NX faults. Its static tables are accessed
+   through equal numeric physical/virtual addresses; portability is unproven.
+4. Replace or prove that table-frame mapping assumption for other firmware,
+   keep NX CPU support/state checks explicit (the kernel does not enable NXE),
+   and build independent address spaces before mapping user addresses.
 5. Establish the full virtual layout and address spaces before mapping user
    addresses; add TLB shootdown only after APIC and per-CPU state work.
 6. Add shared pages only through capability-scoped mappings with lifetime and

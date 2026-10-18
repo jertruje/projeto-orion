@@ -20,9 +20,13 @@
 8. It installs and verifies the kernel GDT/TSS and exception IDT while IF
    remains clear, then advances to `ARCH_TABLES_READY`.
 9. The core advances to `CORE_READY`, reports the validated boot memory-map
-   byte count and that UEFI boot services have exited, then advances to `IDLE`.
-10. The core logs entry into the minimal idle loop and repeatedly executes
-   `cli; hlt`.
+   byte count and that UEFI boot services have exited.
+10. It initializes the kernel scheduler, runs the cooperative round-robin
+    self-test, then configures PIT/PIC IRQ0 and runs the bounded single-CPU
+    preemption and metric tests. The timer is masked and scheduler preemption
+    disabled before continuing.
+11. The core advances to `IDLE`, logs entry into the minimal idle loop and
+    repeatedly executes `cli; hlt`.
 
 Each transition must be exactly the next valid enum value and must match the
 current state. An invalid transition, invalid boot contract, failed CPU-state
@@ -33,8 +37,8 @@ or automatic reboot.
 
 The CPU check is an assertion about inherited loader/firmware state, not a
 CPU-feature discovery framework, a page-table audit, or proof that all
-referenced memory is mapped. The kernel's own GDT/IDT cover ring-0 descriptor
-setup and CPU exceptions only; external IRQs remain disabled. Since IF remains
-clear and only one CPU is started, the idle loop has no timer, preemption, or
-scheduler. These are later-phase dependencies, not claims of implemented
-functionality.
+referenced memory is mapped. The kernel's own GDT/IDT cover ring-0 descriptor setup, CPU exceptions and the
+tested timer vector 32. Only PIT/PIC IRQ0 is configured, during the bounded
+test; other external IRQs remain masked. IF is clear again before idle and
+only the boot CPU is started. There is no general timer service, user mode, or
+SMP scheduler.

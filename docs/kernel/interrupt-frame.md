@@ -1,4 +1,4 @@
-# x86-64 exception frame
+# x86-64 interrupt frame
 
 The stubs normalize the top of the frame to `vector`, `error_code`, then the
 CPU-saved return frame. Before calling C they push, in order, `RAX`, `RBX`,
@@ -19,5 +19,10 @@ in the C struct because the fatal dispatcher does not inspect them.
 The common stub clears DF for the C ABI, aligns RSP down to 16 bytes before
 `call`, uses the saved R12 slot to restore the original frame pointer, restores
 all general registers, removes vector/error slots and executes `iretq`.
-Only #BP currently returns. No scheduling or context-switch semantics are
-implemented.
+CPU exceptions use vectors 0–31. PIT IRQ0 uses vector 32, whose normalized
+frame has the same register/vector/error/RIP layout; the timer dispatcher may
+switch to another thread and later resume this handler before `iretq`.
+
+This interrupt-time scheduling composition has been exercised only on one
+QEMU vCPU. No privilege-transition return frame, APIC vector set, FPU/SIMD
+state, or SMP-specific interrupt stack is implemented.

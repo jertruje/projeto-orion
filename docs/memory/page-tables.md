@@ -12,6 +12,13 @@ between them. The manager does not assume that equal numeric physical and
 virtual addresses are interchangeable.
 
 Every successful map/unmap calls the supplied single-address invalidation
-callback. There is no built-in `invlpg`, CR3 reload, or SMP TLB shootdown.
-Before live use, the callback and table-frame access must be validated in the
-active address space; the current kernel intentionally does not mutate CR3.
+callback. The x86-64 bootstrap adapter supplies `invlpg`; host tests use a
+test callback. The active adapter copies the inherited PML4 before changing
+CR3 and preserves the inherited entries. Its single-address mapping and
+permission-fault paths pass in QEMU/EDK2. This does not implement an SMP TLB
+shootdown, general CR3 migration, or process address spaces.
+
+The adapter accesses its statically reserved page-table pages through equal
+numeric virtual and physical addresses. That mapping assumption is validated
+only in the tested QEMU/EDK2 environment and must be replaced or independently
+proven before claiming support for other firmware or hardware.
