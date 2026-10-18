@@ -2,6 +2,7 @@
 #include <orion/init_state.h>
 
 static uint64_t aligned_map[10];
+static uint8_t application_image;
 
 static int expect(bool condition, const char *name)
 {
@@ -20,10 +21,31 @@ int main(void)
         0,
         aligned_map,
         sizeof(aligned_map),
-        40
+        40,
+        0,
+        0
     };
     int failures = 0;
     failures += expect(orion_boot_info_is_valid(&info), "valid");
+    info.application_image = &application_image;
+    info.application_image_size = 1;
+    failures += expect(orion_boot_info_is_valid(&info), "optional application");
+    info.application_image = 0;
+    failures += expect(!orion_boot_info_is_valid(&info),
+                       "application size without image");
+    info.application_image = &application_image;
+    info.application_image_size = 0;
+    failures += expect(!orion_boot_info_is_valid(&info),
+                       "application image without size");
+    info.application_image = (const void *)(UINTPTR_MAX - 1U);
+    info.application_image_size = 4;
+    failures += expect(!orion_boot_info_is_valid(&info),
+                       "application pointer overflow");
+    info.application_image = 0;
+    info.application_image_size = ORION_BOOT_APPLICATION_MAX_BYTES + 1U;
+    failures += expect(!orion_boot_info_is_valid(&info),
+                       "oversized application image");
+    info.application_image_size = 0;
     failures += expect(!orion_boot_info_is_valid(0), "null info");
 
     info.signature ^= 1;

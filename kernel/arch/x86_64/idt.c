@@ -31,6 +31,7 @@ static x86_64_idt_gate idt[ORION_X86_64_IDT_ENTRY_COUNT]
 _Static_assert(sizeof(idt) == 4096, "IDT entry count and size");
 static bool idt_initialized;
 extern const uintptr_t orion_x86_64_isr_stub_table[];
+extern void orion_x86_64_isr_128(void);
 extern void orion_x86_64_load_idt(
     const x86_64_descriptor_table_pointer *idtr);
 
@@ -65,6 +66,9 @@ bool orion_x86_64_idt_init(void)
     }
     set_gate(ORION_X86_64_TIMER_VECTOR,
              orion_x86_64_isr_stub_table[ORION_X86_64_TIMER_VECTOR], 0);
+    set_gate(ORION_X86_64_SYSCALL_VECTOR,
+             (uintptr_t)orion_x86_64_isr_128, 0);
+    idt[ORION_X86_64_SYSCALL_VECTOR].attributes = 0xeeU;
 
     idtr.limit = sizeof(idt) - 1U;
     idtr.base = (uintptr_t)idt;
@@ -93,6 +97,12 @@ bool orion_x86_64_idt_init(void)
         (idt[ORION_X86_64_TIMER_VECTOR].offset_low == 0 &&
          idt[ORION_X86_64_TIMER_VECTOR].offset_middle == 0 &&
          idt[ORION_X86_64_TIMER_VECTOR].offset_high == 0)) {
+        return false;
+    }
+    if (idt[ORION_X86_64_SYSCALL_VECTOR].selector !=
+            ORION_X86_64_KERNEL_CODE_SELECTOR ||
+        idt[ORION_X86_64_SYSCALL_VECTOR].attributes != 0xeeU ||
+        idt[ORION_X86_64_SYSCALL_VECTOR].ist != 0U) {
         return false;
     }
     idt_initialized = true;

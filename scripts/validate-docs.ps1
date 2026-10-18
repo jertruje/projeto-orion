@@ -140,6 +140,21 @@ $requiredFiles = @(
     'kernel\drivers\net\ne2k_pci.c',
     'tests\kernel\net\network_test.c',
     'scripts\test-network-qemu.ps1',
+    'kernel\syscall\syscall.h',
+    'kernel\syscall\syscall.c',
+    'kernel\exec\elf64.h',
+    'kernel\exec\elf64.c',
+    'kernel\exec\user_program.h',
+    'kernel\exec\user_program.c',
+    'kernel\mm\user_space.h',
+    'kernel\mm\user_space.c',
+    'lib\orion\syscall.h',
+    'lib\orion\syscall.c',
+    'apps\orion\test_app.c',
+    'apps\orion\test_app.ld',
+    'tests\kernel\exec\elf64_test.c',
+    'scripts\test-user-mode-qemu.ps1',
+    'docs\user-mode.md',
     'scripts\test-kernel-preemption.ps1',
     'docs\phase-status.md',
     'docs\phase-status-11-20.md',
@@ -227,6 +242,9 @@ foreach ($phase in 11..20) {
     if ($laterPhases -notmatch '(?m)^\| 17\s+— Rede \| PARCIAL: NE2000/PIO, IPv4, ICMP E UDP') {
         throw 'Phase 17 must remain scoped to tested NE2000/IPv4/ICMP/UDP support.'
     }
+}
+if ($laterPhases -notmatch '(?m)^\| 19\s+— Syscalls e aplicações \| PARCIAL') {
+    throw 'Phase 19 must remain partial until user process lifecycle and isolation gates are complete.'
 }
 
 $finalPhases = Get-Content -Raw -LiteralPath (Join-Path $root 'docs\phase-status-21-26.md')

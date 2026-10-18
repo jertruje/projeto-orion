@@ -18,6 +18,7 @@ substitui dados de teste.
 | ADR-0025 | Parcialmente aceita | Registry limitado, PCI mechanism #1 somente leitura no bus 0 e driver platform COM1. | Plataforma q35 e UART existentes oferecem primeiro caminho de ponta a ponta sem habilitar DMA nem escrever BARs. | Host/QEMU validam lifecycle, scanner e UART; sem driver PCI, MMIO, IRQ routing, DMA, ECAM, isolamento ou cobertura geral de hardware. |
 | ADR-0026 | Parcialmente aceita | Usar PIT IRQ0 tanto para a preempção testada quanto, em modo separado, como clocksource coarse; callbacks de deadlines ficam numa fila estática de 32 slots e são executados fora da IRQ. | Reutiliza o único timer que o kernel realmente inicializa; leitura PIT não exige pressupor invariância/frequência de TSC nem mapeamentos ACPI. Uma varredura bounded é suficiente para a capacidade atual. | Host tests cobrem conversão, monotonicidade, cancelamento, expiração, periodicidade e falhas; QEMU prova expiração real PIT. Sem sleep/wakeup do scheduler, timeouts bloqueantes, SMP, ACPI ou transição de energia. Revisar quando outra fonte/timer de dispositivo validado existir. |
 | ADR-0027 | Parcialmente aceita | Primeiro armazenamento usa block layer bounded, ATA PIO primary-master e ORIONFS v1; imagem só é formatada por ferramenta explícita. | QEMU q35 oferece IDE legado testável agora; formato pequeno e sem partições delimita o primeiro gate. O boot não deve formatar nem montar/escrever automaticamente em mídia desconhecida. | Host tests, boot sem disco e persistência após novo processo QEMU passaram. Sem journaling, atomicidade a power loss, partições, cache, user descriptors, timeout de dispositivo ou SMP; suportar apenas a configuração efetivamente testada. |
+| ADR-0029 | Parcialmente aceita | Primeira ABI x86-64 usa `int 0x80`, syscalls síncronas e uma aplicação ET_EXEC pré-carregada; não habilita `SYSCALL/SYSRET` nem serviços user-facing ainda. | Menor delta compatível com IDT/TSS já exercitados; alternativa MSR syscall/SYSRET exige setup de STAR/LSTAR/FMASK, SWAPGS e novo entry/exit audit. App testada em QEMU/OVMF com buffers validados e teardown. | `console_write`, `system_info`, `process_exit` v1 funcionam em um único processo de teste. Sem handles, capabilities em user mode, IPC, arquivos, sockets, scheduler de user processes, authenticated image, SMP ou firmware portability; ver `user-mode.md`. |
 
 | ADR-0009 | Aceita como arquitetura-base | Microkernel mínimo com capabilities para autoridade; serviços/drivers em user mode por padrão. | Alinha placement aos requisitos de contenção; trade-offs e lacunas de pesquisa explícitos. | Não prova segurança/desempenho; revisar com testes/medições de IPC, isolamento e recuperação. |
 | ADR-0010 | Aceita como baseline | IPC síncrono request/reply, copiado, limitado e com quotas para controle. | Ownership simples para primeira implementação; shared memory adiada até necessidade medida. | Medir p50/p95/p99, throughput, jitter e CPU/op; limites definidos no gate de implementação. |
@@ -750,3 +751,35 @@ de dados de hardware/workload permanecem parametrizadas e têm gates explícitos
   TCP após implementação confiável de estados, ACK, retransmissão, fluxo,
   timers e testes de perda/reordenação; não habilitar sockets até existir
   isolamento e API de usuário validada.
+
+### ADR-0029 — ABI x86-64 inicial via `int 0x80` (ACEITA PARA FASE 19 PARCIAL)
+
+- **Contexto/problema:** a IDT/TSS e o tratamento de exceções já existem, mas
+  não havia transição CPL3, ABI pública, processo com root próprio ou loader de
+  aplicações. `SYSCALL/SYSRET` também exige configurar MSRs de entrada/retorno,
+  `SWAPGS`, máscara de flags e entry stack sem reusar diretamente a convenção
+  de IRQ.
+- **Alternativas consideradas:** implementar o caminho MSR completo agora;
+  usar `int 0x80` DPL3 já integrado à IDT; ou adiar user mode até construir
+  lifecycle de processos e supervisor. A última alternativa preservaria o
+  bloqueio do objetivo de executar uma aplicação independente.
+- **Decisão:** usar `int 0x80` como mecanismo inicial, com argumento em RDI/RSI/
+  RDX, número/retorno em RAX, buffers validados página por página e uma
+  aplicação ET_EXEC pré-carregada pela UEFI. Restringir a três syscalls e um
+  processo de teste, em vez de expor handles ou APIs não implementadas.
+- **Justificativa:** reutiliza a IDT/TSS e um caminho de retorno testável,
+  mantendo os serviços mínimos e explícitos. Isso não resolve o modelo final
+  de processos nem prova isolamento contra firmware/CPU.
+- **Evidência:** host ELF negative tests e QEMU/OVMF q35 executaram uma
+  aplicação independente, chamadas válidas/inválidas, exit code e teardown de
+  user pages. Teste CPL3 de falha de CPU, segunda plataforma e SMP permanecem
+  pendentes.
+- **Consequências/limites:** uma única pilha de syscall/CPU, uma única tarefa,
+  endereço fixo cujo PML4 slot deve estar livre, root de usuário que clona as
+  entradas herdadas supervisor, sem handles/capabilities user-facing, IPC,
+  arquivos, rede, ASLR, relocations, assinatura ou compatibilidade POSIX.
+- **Critérios de revisão:** antes de múltiplos processos, separar lifecycle e
+  raízes de memória com testes de acesso cruzado, cleanup de falha e TLB;
+  antes de expor objetos, implementar handles tipados com capabilities e
+  teardown; avaliar `SYSCALL/SYSRET` com auditoria de entry/exit e fault
+  injection; testar firmware alternativo, falhas CPL3 e fuzz do loader.

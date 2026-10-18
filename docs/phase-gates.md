@@ -18,7 +18,8 @@ Document presence alone is insufficient.
 | Capabilities/IPC (11–12) | User/process address spaces and lifecycle exist | Negative rights, attenuation/revocation, malformed messages, quotas and teardown tests |
 | Supervisor/drivers/time/storage/network (13–17) | Prerequisite mechanism and device mediation complete | Fault injection, lifecycle, device-specific QEMU/hardware, data integrity and performance data |
 | Verified boot/package (18, 21) | Trust root and persistent transactional storage designed | Wrong key/corrupt/rollback rejection; power-cut update/install/remove integrity tests |
-| Syscalls/GUI (19–20) | User mode, API, process model and display/input access exist | User app execution, ABI tests, framebuffer/input tests within actual guest |
+| Syscalls/apps (19) | Safe CPL3 entry/return, bounded user mappings, versioned API | Independent user app, ABI/error/buffer tests and teardown in actual guest |
+| GUI (20) | GOP/framebuffer, input drivers, user apps and display access mediation | Framebuffer/input tests within actual guest |
 | Audit/benchmark/release (22–24) | Relevant subsystems implemented and versioned | Security review + negative/regression suite; reproducible benchmark data; RC criteria and artifact manifest |
 
 ## Architecture gate result
@@ -118,6 +119,24 @@ startup, SMP synchronization, physical-device compatibility, an invariant
 hardware tick rate, hard-real-time latency, FPU/SIMD context preservation, or
 performance superiority. Phase 11 has a partial implementation result below;
 the user-mode isolation and capability-mediated subsystem gate remains open.
+
+## Syscall and application gate result
+
+**Phase 19 partially implemented and tested for one QEMU/OVMF configuration.**
+The x86-64 kernel installs a DPL3 `int 0x80` gate and enters CPL3 with an
+independently linked ELF64 ET_EXEC application. ABI v1 exposes only bounded
+console output, system information and process exit. The host parser tests
+reject malformed/oversized/overlapping/W+X/unsupported images; the QEMU test
+checks valid/invalid buffers, unknown syscall handling, exit status, CR3/TSS
+return and user-page cleanup.
+
+The loader supports one test process and a fixed user virtual slot; it fails
+closed if the inherited PML4 slot is already used. User-facing capability
+handles, IPC, files, networking, general process scheduling, dynamic linking,
+ASLR, authenticated images, CPL3 exception injection, SMP and alternate
+firmware are not implemented or validated. The cloned root retains inherited
+supervisor mappings. This result is not a claim of complete process isolation,
+POSIX compatibility or Secure Boot; see [user-mode.md](user-mode.md).
 
 ## Capability model gate result
 

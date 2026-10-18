@@ -15,9 +15,11 @@ portabilidade a firmware físico.
 - Entry `_start` é Assembly x86-64; desabilita interrupts, troca para stack
   estática do kernel alinhada em 16 bytes e chama `kernel_main`.
 - No ABI utilizado, o primeiro argumento C é o ponteiro para `orion_boot_info`.
-- Kernel espera assinatura `0x314f52494f4f5442`, versão 1, ponteiro de mapa,
-  tamanho em bytes e `descriptor_size`. O kernel rejeita campos nulos/inválidos
-  segundo verificações atuais.
+- Kernel espera assinatura `0x314f52494f4f5442`, versão 2, ponteiro de mapa,
+  tamanho em bytes, `descriptor_size` e handoff opcional de uma imagem de
+  aplicação (ponteiro + tamanho). O tamanho máximo é 256 KiB; ponteiro e tamanho
+  devem ser ambos presentes ou ambos nulos/zero. O kernel rejeita campos
+  nulos/inválidos segundo verificações atuais.
 - GDT/TSS/IDT próprias de exceções estão instaladas; IF permanece desabilitado
   e IRQs externos não são configurados.
 - O mapa foi alocado antes de `ExitBootServices` e é passado ao kernel. O
@@ -29,17 +31,24 @@ portabilidade a firmware físico.
   caminho QEMU com NX habilitado, o kernel copia o PML4 herdado para um root
   estático reservado, preserva as entradas herdadas, troca o CR3 para essa
   cópia e testa um mapeamento temporário. Isso não cria um espaço de processo
-  nem estabelece um layout virtual independente.
+  geral nem estabelece um layout virtual independente. A implementação
+  parcial da Fase 19 cria um root clonado por aplicação de teste, mas exige
+  PML4 slot 2 livre e mantém as demais entradas supervisor herdadas.
+- A aplicação opcional `application.elf` usa ELF64 ET_EXEC x86-64 e é validada
+  por um loader limitado do kernel. A interface e suas restrições constam em
+  [user-mode.md](user-mode.md). O boot-info não autentica a aplicação e o
+  loader UEFI do kernel não deve ser confundido com o carregador de user ELF.
 - Kernel escreve diretamente na UART COM1 (0x3f8) do ambiente QEMU e para no
   loop `cli; hlt`.
 
 ## Limitações explícitas
 
-- Nenhuma autenticação criptográfica do ELF, política de Secure Boot, verificação
-  anti-rollback ou assinatura de imagem foi demonstrada.
-- O loader não deve ser considerado parser ELF endurecido: validações contra
-  overflow, segmentos sobrepostos, endereços permitidos, tamanho de imagem,
-  alinhamento e casos adversariais ainda exigem revisão/fuzzing.
+- Nenhuma autenticação criptográfica do kernel ou da aplicação, política de
+  Secure Boot, verificação anti-rollback ou assinatura de imagem foi demonstrada.
+- O parser UEFI do kernel e o loader de aplicação têm escopos distintos. O
+  parser de user ELF limita tamanho, número/overlap de segmentos, faixa virtual,
+  W^X e tipos suportados, mas ainda exige fuzzing e revisão independente; o
+  parser UEFI do kernel não ganha hardening por essa implementação.
 - O código depende de detalhes de ABI UEFI x64 e de firmware QEMU/EDK2.
 - Não há garantias sobre page tables/identity map de outros firmwares. O
   kernel detecta se NX e EFER.NXE estão ativos no CPU testado, não altera

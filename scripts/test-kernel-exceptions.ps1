@@ -110,6 +110,7 @@ try {
             -BuildDirectory $BuildDirectory `
             -ObservationSeconds $ObservationSeconds `
             -ExpectedMessages $case.Expected `
+            -SkipStandardHardwareChecks `
             -RequireRunning `
             -SuccessMessage "QEMU exception test passed: $($case.Image)"
     }

@@ -33,10 +33,10 @@ _Static_assert(offsetof(x86_64_tss, io_map_base) == 102,
 _Static_assert(sizeof(x86_64_descriptor_table_pointer) == 10,
                "GDTR layout");
 
-static uint64_t gdt[5] __attribute__((aligned(8)));
+static uint64_t gdt[7] __attribute__((aligned(8)));
 static x86_64_tss tss __attribute__((aligned(16)));
 static uint8_t double_fault_stack[16384] __attribute__((aligned(16)));
-_Static_assert(sizeof(gdt) == 40, "GDT entry count and size");
+_Static_assert(sizeof(gdt) == 56, "GDT entry count and size");
 static uint8_t saved_nmi_port_state;
 static bool nmi_mask_active;
 static bool gdt_initialized;
@@ -92,8 +92,10 @@ bool orion_x86_64_gdt_init(void)
     gdt[0] = 0;
     gdt[1] = UINT64_C(0x00af9a000000ffff);
     gdt[2] = UINT64_C(0x00cf92000000ffff);
-    gdt[3] = tss_descriptor(tss_base, sizeof(tss) - 1U);
-    gdt[4] = (uint64_t)(tss_base >> 32);
+    gdt[3] = UINT64_C(0x00affa000000ffff);
+    gdt[4] = UINT64_C(0x00cff2000000ffff);
+    gdt[5] = tss_descriptor(tss_base, sizeof(tss) - 1U);
+    gdt[6] = (uint64_t)(tss_base >> 32);
 
     gdtr.limit = sizeof(gdt) - 1U;
     gdtr.base = (uintptr_t)gdt;
@@ -109,6 +111,15 @@ bool orion_x86_64_gdt_init(void)
         return false;
     }
     gdt_initialized = true;
+    return true;
+}
+
+bool orion_x86_64_tss_set_kernel_stack(uintptr_t stack_top)
+{
+    if (!gdt_initialized || stack_top == 0 || (stack_top & 0xfU) != 0) {
+        return false;
+    }
+    tss.rsp0 = stack_top;
     return true;
 }
 

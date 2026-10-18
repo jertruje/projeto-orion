@@ -27,6 +27,7 @@ param(
         '[ORION][CORE][INFO] Minimal kernel is running'
     ),
     [switch]$RequireRunning,
+    [switch]$SkipStandardHardwareChecks,
     [string]$SuccessMessage = 'UEFI-to-kernel boot verification: PASS'
 )
 
@@ -140,37 +141,39 @@ foreach ($expected in $ExpectedMessages) {
     }
 }
 
-$pciCountMatch = [regex]::Match(
-    $output,
-    '\[ORION\]\[DRIVER\]\[INFO\] PCI functions discovered on bus 0: (?<value>\d+)'
-)
-if (-not $pciCountMatch.Success) {
-    throw 'Boot evidence is missing the PCI inventory count.'
-}
-$pciCount = [UInt32]::Parse($pciCountMatch.Groups['value'].Value)
-if ([string]::IsNullOrWhiteSpace($dataDisk)) {
-    if ($pciCount -ne 6 -or
-        $output -notmatch [regex]::Escape(
-            '[ORION][STORAGE][WARN] No supported primary-master ATA disk detected')) {
-        throw "Storage-free q35 boot did not report the expected optional disk absence (PCI functions=$pciCount)."
-    }
-} else {
-    if ($pciCount -le 6 -or
-        $output -notmatch [regex]::Escape(
-            '[ORION][STORAGE][INFO] ATA PIO block device online')) {
-        throw "QEMU data disk was not discovered and initialized (PCI functions=$pciCount)."
-    }
-    $capacityMatch = [regex]::Match(
+if (-not $SkipStandardHardwareChecks) {
+    $pciCountMatch = [regex]::Match(
         $output,
-        '\[ORION\]\[STORAGE\]\[INFO\] ATA primary-master sectors: (?<value>\d+)'
+        '\[ORION\]\[DRIVER\]\[INFO\] PCI functions discovered on bus 0: (?<value>\d+)'
     )
-    if (-not $capacityMatch.Success -or
-        [UInt64]::Parse($capacityMatch.Groups['value'].Value) -eq 0) {
-        throw 'ATA IDENTIFY did not report a non-zero disk capacity.'
+    if (-not $pciCountMatch.Success) {
+        throw 'Boot evidence is missing the PCI inventory count.'
     }
-    if (-not [string]::IsNullOrWhiteSpace($StorageExpectedMessage) -and
-        $output -notmatch [regex]::Escape($StorageExpectedMessage)) {
-        throw "Storage boot evidence missing expected message: $StorageExpectedMessage"
+    $pciCount = [UInt32]::Parse($pciCountMatch.Groups['value'].Value)
+    if ([string]::IsNullOrWhiteSpace($dataDisk)) {
+        if ($pciCount -ne 6 -or
+            $output -notmatch [regex]::Escape(
+                '[ORION][STORAGE][WARN] No supported primary-master ATA disk detected')) {
+            throw "Storage-free q35 boot did not report the expected optional disk absence (PCI functions=$pciCount)."
+        }
+    } else {
+        if ($pciCount -le 6 -or
+            $output -notmatch [regex]::Escape(
+                '[ORION][STORAGE][INFO] ATA PIO block device online')) {
+            throw "QEMU data disk was not discovered and initialized (PCI functions=$pciCount)."
+        }
+        $capacityMatch = [regex]::Match(
+            $output,
+            '\[ORION\]\[STORAGE\]\[INFO\] ATA primary-master sectors: (?<value>\d+)'
+        )
+        if (-not $capacityMatch.Success -or
+            [UInt64]::Parse($capacityMatch.Groups['value'].Value) -eq 0) {
+            throw 'ATA IDENTIFY did not report a non-zero disk capacity.'
+        }
+        if (-not [string]::IsNullOrWhiteSpace($StorageExpectedMessage) -and
+            $output -notmatch [regex]::Escape($StorageExpectedMessage)) {
+            throw "Storage boot evidence missing expected message: $StorageExpectedMessage"
+        }
     }
 }
 

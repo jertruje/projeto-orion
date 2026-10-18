@@ -22,6 +22,9 @@ KERNEL_CFLAGS := --target=x86_64-elf -Iinclude -Ikernel/console -Ikernel/log \
 	-Ikernel/panic -std=c11 -O2 -Wall -Wextra -Werror \
 	-ffreestanding -fno-stack-protector -fno-pic -fno-builtin -mno-red-zone \
 	-mcmodel=small -g
+APP_CFLAGS := --target=x86_64-elf -Iinclude -Ilib -std=c11 -O2 \
+	-Wall -Wextra -Werror -ffreestanding -fno-stack-protector -fno-pic \
+	-fno-builtin -mno-red-zone -mcmodel=large -g
 KERNEL_OBJECTS := $(BUILD)/entry.o $(BUILD)/main.o $(BUILD)/serial.o \
 	$(BUILD)/log.o $(BUILD)/panic.o $(BUILD)/cpu_state.o $(BUILD)/fatal.o \
 	$(BUILD)/fault-report.o \
@@ -34,14 +37,18 @@ KERNEL_OBJECTS := $(BUILD)/entry.o $(BUILD)/main.o $(BUILD)/serial.o \
 	$(BUILD)/ipc-channel.o $(BUILD)/clocksource.o $(BUILD)/kernel-timer.o \
 	$(BUILD)/block.o $(BUILD)/ata-pio.o $(BUILD)/orionfs.o $(BUILD)/vfs.o
 KERNEL_OBJECTS += $(BUILD)/net-network.o $(BUILD)/ne2k-pci.o
+KERNEL_OBJECTS += $(BUILD)/user-mode.o $(BUILD)/user-space.o \
+	$(BUILD)/syscall.o $(BUILD)/elf64.o $(BUILD)/user-program.o
 KERNEL_TASKING_OBJECTS := $(BUILD)/context_switch.o $(BUILD)/process.o \
 	$(BUILD)/thread.o $(BUILD)/scheduler.o $(BUILD)/timer.o \
 	$(BUILD)/interrupt_state.o $(BUILD)/capability.o $(BUILD)/ipc-channel.o \
-	$(BUILD)/fault-report.o
+	$(BUILD)/fault-report.o $(BUILD)/syscall.o $(BUILD)/user-space.o \
+	$(BUILD)/page_tables.o $(BUILD)/physical.o $(BUILD)/memory_map.o \
+	$(BUILD)/serial.o $(BUILD)/user-mode.o
 
 .PHONY: all check-tools build run test-boot test-storage-qemu prepare-storage-tool \
 	test-network-qemu \
-	test-tasking-qemu test-panic-qemu \
+	test-tasking-qemu test-panic-qemu test-user-mode-qemu \
 	test-exceptions-qemu test-preemption-qemu test-unit toolchain-test \
 	validate-docs clean inspect
 
@@ -70,6 +77,65 @@ $(BOOT_DIR)/BOOTX64.EFI: $(BUILD)/loader.obj $(BUILD)/io.obj | $(BOOT_DIR)
 
 $(BUILD)/entry.o: kernel/arch/x86_64/entry.S | $(BUILD)/.dir
 	$(CLANG) $(KERNEL_CFLAGS) -c $< -o $@
+
+$(BUILD)/user-mode.o: kernel/arch/x86_64/user_mode.S | $(BUILD)/.dir
+	$(CLANG) $(KERNEL_CFLAGS) -c $< -o $@
+
+$(BUILD)/user-space.o: kernel/mm/user_space.c kernel/mm/user_space.h \
+	kernel/mm/page_tables.h kernel/mm/physical.h \
+	kernel/arch/x86_64/cpu_state.h kernel/arch/x86_64/interrupt_state.h | $(BUILD)/.dir
+	$(CLANG) $(KERNEL_CFLAGS) -c $< -o $@
+
+$(BUILD)/syscall.o: kernel/syscall/syscall.c kernel/syscall/syscall.h \
+	kernel/mm/user_space.h kernel/console/serial.h | $(BUILD)/.dir
+	$(CLANG) $(KERNEL_CFLAGS) -c $< -o $@
+
+$(BUILD)/elf64.o: kernel/exec/elf64.c kernel/exec/elf64.h \
+	kernel/mm/user_space.h kernel/mm/physical.h \
+	kernel/arch/x86_64/cpu_state.h kernel/arch/x86_64/gdt.h \
+	kernel/arch/x86_64/interrupt_state.h kernel/arch/x86_64/user_mode.h \
+	kernel/syscall/syscall.h include/orion/boot_info.h | $(BUILD)/.dir
+	$(CLANG) $(KERNEL_CFLAGS) -c $< -o $@
+
+$(BUILD)/user-program.o: kernel/exec/user_program.c \
+	kernel/exec/user_program.h kernel/exec/elf64.h \
+	kernel/arch/x86_64/gdt.h kernel/arch/x86_64/interrupt_state.h \
+	kernel/arch/x86_64/user_mode.h kernel/syscall/syscall.h \
+	kernel/task/process.h | $(BUILD)/.dir
+	$(CLANG) $(KERNEL_CFLAGS) -c $< -o $@
+
+$(BUILD)/user-entry.o: apps/orion/entry.S | $(BUILD)/.dir
+	$(CLANG) $(APP_CFLAGS) -c $< -o $@
+
+$(BUILD)/user-test-app.o: apps/orion/test_app.c \
+	lib/orion/syscall.h | $(BUILD)/.dir
+	$(CLANG) $(APP_CFLAGS) -c $< -o $@
+
+$(BUILD)/user-lib-syscall.o: lib/orion/syscall.c lib/orion/syscall.h | $(BUILD)/.dir
+	$(CLANG) $(APP_CFLAGS) -c $< -o $@
+
+$(BUILD)/application.elf: $(BUILD)/user-entry.o \
+	$(BUILD)/user-test-app.o $(BUILD)/user-lib-syscall.o apps/orion/test_app.ld
+	$(LLD) -m elf_x86_64 -T apps/orion/test_app.ld --no-undefined \
+		--build-id=none -o $@ $(filter %.o,$^)
+
+$(BUILD)/user-test-main.o: kernel/core/main.c include/orion/boot_info.h \
+	include/orion/init_state.h kernel/exec/user_program.h \
+	kernel/arch/x86_64/cpu_state.h kernel/arch/x86_64/gdt.h \
+	kernel/arch/x86_64/idt.h kernel/arch/x86_64/interrupt_state.h \
+	kernel/arch/x86_64/timer.h kernel/drivers/bus/pci.h \
+	kernel/drivers/core/driver.h kernel/drivers/platform/uart16550.h \
+	kernel/mm/active_page_tables.h kernel/mm/memory_map.h \
+	kernel/mm/physical.h kernel/task/scheduler.h kernel/log/log.h \
+	kernel/security/capability.h kernel/panic/panic.h \
+	kernel/console/serial.h kernel/time/clocksource.h \
+	kernel/time/timer.h | $(BUILD)/.dir
+	$(CLANG) $(KERNEL_CFLAGS) -DORION_USER_QEMU_TEST -c $< -o $@
+
+$(BUILD)/user-test-kernel.elf: $(filter-out $(BUILD)/main.o,$(KERNEL_OBJECTS)) \
+	$(BUILD)/user-test-main.o kernel/linker.ld
+	$(LLD) -m elf_x86_64 -T kernel/linker.ld --no-undefined --build-id=none \
+		-o $@ $(filter %.o,$^)
 
 $(BUILD)/storage-test-main.o: kernel/core/main.c include/orion/boot_info.h \
 	include/orion/init_state.h kernel/time/clocksource.h kernel/time/timer.h \
@@ -275,6 +341,14 @@ test-boot: build
 	@powershell.exe -NoProfile -ExecutionPolicy Bypass -File scripts/test-boot.ps1 \
 		-ToolchainHome "$(TOOLCHAIN_HOME)" -RequireRunning
 
+test-user-mode-qemu: check-tools $(BOOT_DIR)/BOOTX64.EFI \
+	$(BUILD)/user-test-kernel.elf $(BUILD)/application.elf
+	@powershell.exe -NoProfile -ExecutionPolicy Bypass -File scripts/test-user-mode-qemu.ps1 \
+		-ToolchainHome "$(TOOLCHAIN_HOME)" -BuildDirectory "$(BUILD)" \
+		-UserKernel "$(BUILD)/user-test-kernel.elf" \
+		-BootLoader "$(BOOT_DIR)/BOOTX64.EFI" \
+		-Application "$(BUILD)/application.elf"
+
 test-tasking-qemu: build
 	@powershell.exe -NoProfile -ExecutionPolicy Bypass -File scripts/test-kernel-tasking.ps1 \
 		-ToolchainHome "$(TOOLCHAIN_HOME)" -BuildDirectory "$(BUILD)"
@@ -339,6 +413,12 @@ $(BUILD)/kernel-net-test.exe: tests/kernel/net/network_test.c \
 	kernel/net/network.c kernel/net/network.h | $(BUILD)/.dir
 	$(CLANG) -std=c11 -Wall -Wextra -Werror -Ikernel \
 		tests/kernel/net/network_test.c kernel/net/network.c -o $@
+
+$(BUILD)/kernel-elf64-test.exe: tests/kernel/exec/elf64_test.c \
+	kernel/exec/elf64.c kernel/exec/elf64.h kernel/mm/user_space.h \
+	kernel/mm/page_tables.h include/orion/boot_info.h | $(BUILD)/.dir
+	$(CLANG) -I. -Iinclude -Ikernel -std=c11 -Wall -Wextra -Werror \
+		tests/kernel/exec/elf64_test.c kernel/exec/elf64.c -o $@
 
 $(BUILD)/orionfs-image.exe: tools/orionfs_image.c \
 	kernel/storage/block.c kernel/fs/orionfs.c \
@@ -498,7 +578,8 @@ test-unit: $(BUILD)/boot-info-test.exe $(BUILD)/kernel-log-test.exe \
 	$(BUILD)/page-tables-test.exe $(BUILD)/kernel-task-test.exe \
 	$(BUILD)/kernel-ipc-test.exe $(BUILD)/kernel-fault-test.exe \
 	$(BUILD)/kernel-drivers-test.exe $(BUILD)/kernel-time-test.exe \
-	$(BUILD)/kernel-storage-test.exe $(BUILD)/kernel-net-test.exe
+	$(BUILD)/kernel-storage-test.exe $(BUILD)/kernel-net-test.exe \
+	$(BUILD)/kernel-elf64-test.exe
 	@powershell.exe -NoProfile -ExecutionPolicy Bypass -File scripts/test-kernel-unit.ps1 \
 		-BuildDirectory "$(BUILD)"
 

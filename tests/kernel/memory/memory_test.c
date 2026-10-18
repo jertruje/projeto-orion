@@ -30,7 +30,9 @@ static void set_boot_info(uint32_t count)
         0,
         descriptors,
         (uint64_t)count * sizeof(descriptors[0]),
-        sizeof(descriptors[0])
+        sizeof(descriptors[0]),
+        NULL,
+        0
     };
 }
 

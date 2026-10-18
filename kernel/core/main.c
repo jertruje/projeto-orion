@@ -11,6 +11,7 @@
 #include "../drivers/platform/uart16550.h"
 #include "../drivers/net/ne2k_pci.h"
 #include "../drivers/storage/ata_pio.h"
+#include "../exec/user_program.h"
 #include "../fs/orionfs.h"
 #include "../mm/active_page_tables.h"
 #include "../mm/memory_map.h"
@@ -940,6 +941,15 @@ void kernel_main(const orion_boot_info *boot_info)
     if (!timekeeping_self_test()) {
         orion_panic_at("TIME", "monotonic clock or timer self-test failed");
     }
+#if defined(ORION_USER_QEMU_TEST)
+    uint64_t user_exit_code = UINT64_MAX;
+    if (!orion_user_program_run(boot_info, &user_exit_code) ||
+        user_exit_code != 0 ||
+        !orion_log(ORION_LOG_INFO, "USER",
+                   "CPL3 application syscalls and teardown passed")) {
+        orion_panic_at("USER", "CPL3 application integration test failed");
+    }
+#endif
 #if defined(ORION_NETWORK_QEMU_TEST)
     if (orion_net_configure(UINT32_C(0x0a00020f),
                             UINT32_C(0xffffff00),

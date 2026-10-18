@@ -112,6 +112,7 @@ enum {
     EFI_LOADER_DATA = 2,
     EFI_PAGE_SIZE = 4096,
     MAX_KERNEL_BYTES = 2 * 1024 * 1024,
+    MAX_APPLICATION_BYTES = 256 * 1024,
     MAX_MEMORY_MAP_BYTES = 256 * 1024,
     MAX_PROGRAM_HEADERS = 32,
     PT_LOAD = 1,
@@ -130,8 +131,14 @@ static const efi_guid simple_file_system_guid = {
 };
 
 static uint8_t kernel_image[MAX_KERNEL_BYTES];
+static uint8_t application_image[MAX_APPLICATION_BYTES];
+static uint64_t application_image_size;
 _Alignas(8) static uint8_t memory_map[MAX_MEMORY_MAP_BYTES];
 static uint16_t kernel_path[] = {'\\', 'k', 'e', 'r', 'n', 'e', 'l', '.', 'e', 'l', 'f', 0};
+static uint16_t application_path[] = {
+    '\\', 'a', 'p', 'p', 'l', 'i', 'c', 'a', 't', 'i', 'o', 'n', '.', 'e',
+    'l', 'f', 0
+};
 
 static void serial_init(void)
 {
@@ -282,6 +289,46 @@ static uint64_t read_kernel(system_table_prefix *system_table, efi_handle image_
         }
     }
     kernel_file->close(kernel_file);
+
+    file = 0;
+    if (!(root_file->open(root_file, &file, application_path, 1, 0) &
+          EFI_ERROR_BIT) &&
+        file != 0) {
+        uint64_t total_application_bytes = 0;
+        uint8_t application_overflow_probe = 0;
+        efi_file_prefix *application_file = (efi_file_prefix *)file;
+        for (;;) {
+            const uint64_t remaining =
+                MAX_APPLICATION_BYTES - total_application_bytes;
+            const uint64_t requested =
+                remaining == 0 ? 1 : remaining < 4096 ? remaining : 4096;
+            uint64_t chunk = requested;
+            void *destination = application_image + total_application_bytes;
+            if (remaining == 0) {
+                destination = &application_overflow_probe;
+            }
+            efi_status read_status = application_file->read(
+                application_file, &chunk, destination);
+            if ((read_status & EFI_ERROR_BIT) != 0 ||
+                chunk > requested) {
+                application_file->close(application_file);
+                root_file->close(root_file);
+                stop("Failed while reading application.elf");
+            }
+            if (remaining == 0 && chunk != 0) {
+                application_file->close(application_file);
+                root_file->close(root_file);
+                stop("application.elf exceeds the 256 KiB loader limit");
+            }
+            total_application_bytes += chunk;
+            if (chunk < requested) {
+                break;
+            }
+        }
+        application_file->close(application_file);
+        application_image_size = total_application_bytes;
+        serial_write("[ORION][UEFI][INFO] Optional application image loaded\n");
+    }
     root_file->close(root_file);
     return total;
 }
@@ -398,7 +445,16 @@ efi_status efi_main(efi_handle image_handle, system_table_prefix *system_table)
     uint32_t descriptor_version = 0;
     efi_status status = 0;
     orion_boot_info boot_info = {
-        ORION_BOOT_INFO_SIGNATURE, ORION_BOOT_INFO_VERSION, 0, memory_map, 0, 0
+        .signature = ORION_BOOT_INFO_SIGNATURE,
+        .version = ORION_BOOT_INFO_VERSION,
+        .reserved = 0,
+        .memory_map = memory_map,
+        .memory_map_size = 0,
+        .descriptor_size = 0,
+        .application_image = application_image_size == 0
+                                 ? 0
+                                 : application_image,
+        .application_image_size = application_image_size
     };
 
     for (uint32_t attempt = 0; attempt < 4; ++attempt) {

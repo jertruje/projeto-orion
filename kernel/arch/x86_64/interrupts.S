@@ -16,7 +16,7 @@ orion_x86_64_load_gdt:
     xorw %ax, %ax
     movw %ax, %fs
     movw %ax, %gs
-    movw $0x18, %ax
+    movw $0x28, %ax
     ltr %ax
     ret
 .size orion_x86_64_load_gdt, .-orion_x86_64_load_gdt
@@ -80,6 +80,7 @@ ISR_ERROR 29
 ISR_ERROR 30
 ISR_NO_ERROR 31
 ISR_NO_ERROR 32
+ISR_NO_ERROR 128
 
 .global orion_x86_64_interrupt_common
 .type orion_x86_64_interrupt_common,@function
@@ -105,6 +106,8 @@ orion_x86_64_interrupt_common:
     andq $-16, %rsp
     call orion_x86_64_exception_dispatch
     movq %r12, %rsp
+    cmpq $-1, 120(%r12)
+    je orion_x86_64_user_return_to_kernel
     popq %r15
     popq %r14
     popq %r13

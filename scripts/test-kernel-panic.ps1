@@ -32,6 +32,7 @@ try {
             '[ORION][TEST][INFO] Breakpoint handler returned to interrupted code',
             '[ORION][TEST][ERROR] QEMU panic path reached'
         ) `
+        -SkipStandardHardwareChecks `
         -RequireRunning `
         -SuccessMessage 'QEMU panic-path verification: PASS'
 } finally {

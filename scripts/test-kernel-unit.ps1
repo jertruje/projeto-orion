@@ -14,6 +14,7 @@ $tests = @(
     @{ Path = (Join-Path $BuildDirectory 'kernel-time-test.exe'); Arguments = @() },
     @{ Path = (Join-Path $BuildDirectory 'kernel-storage-test.exe'); Arguments = @() },
     @{ Path = (Join-Path $BuildDirectory 'kernel-net-test.exe'); Arguments = @() },
+    @{ Path = (Join-Path $BuildDirectory 'kernel-elf64-test.exe'); Arguments = @() },
     @{ Path = (Join-Path $BuildDirectory 'kernel-log-test.exe'); Arguments = @() },
     @{ Path = (Join-Path $BuildDirectory 'kernel-panic-test.exe'); Arguments = @('normal') },
     @{ Path = (Join-Path $BuildDirectory 'kernel-panic-test.exe'); Arguments = @('wrapper') },
@@ -36,4 +37,4 @@ foreach ($test in $tests) {
     }
 }
 
-Write-Output 'Kernel unit tests: PASS (boot-info/init-state, memory, tasking, IPC, faults, drivers/PCI, time/timers, block storage, ORIONFS/VFS, Ethernet/ARP/IPv4/ICMP/UDP, logging, panic)'
+Write-Output 'Kernel unit tests: PASS (boot-info/init-state, memory, ELF64 user loader, tasking, IPC, faults, drivers/PCI, time/timers, block storage, ORIONFS/VFS, Ethernet/ARP/IPv4/ICMP/UDP, logging, panic)'

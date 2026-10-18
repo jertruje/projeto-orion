@@ -10,6 +10,7 @@
 #include "../../panic/panic.h"
 #include "../../task/scheduler.h"
 #include "../../task/thread.h"
+#include "../../syscall/syscall.h"
 
 void orion_x86_64_exception_dispatch(orion_x86_64_exception_frame *frame)
 {
@@ -20,10 +21,15 @@ void orion_x86_64_exception_dispatch(orion_x86_64_exception_frame *frame)
         orion_x86_64_timer_interrupt();
         return;
     }
+    if (frame->vector == ORION_X86_64_SYSCALL_VECTOR) {
+        orion_syscall_dispatch(frame);
+        return;
+    }
     if (frame->vector >= ORION_X86_64_EXCEPTION_COUNT) {
         orion_panic_at("EXCEPTION", "unexpected external interrupt");
     }
 
+    const uint64_t exception_vector = frame->vector;
     const bool from_user = (frame->cs & UINT64_C(3)) != 0;
     orion_thread *thread = from_user ? NULL : orion_scheduler_current();
     orion_process *process =
@@ -31,26 +37,34 @@ void orion_x86_64_exception_dispatch(orion_x86_64_exception_frame *frame)
             ? orion_process_kernel()
             : NULL;
     uintptr_t fault_address = 0;
-    if (frame->vector == 14U) {
+    if (exception_vector == 14U) {
         __asm__ volatile("mov %%cr2, %0" : "=r"(fault_address));
     }
+    const bool user_process_terminated =
+        from_user && orion_syscall_terminate_user_exception(frame);
     orion_fault_record fault = {
         .instruction_pointer = frame->rip,
-        .process_id = process != NULL && thread->process == process
-                          ? process->id
-                          : 0,
+        .process_id = from_user
+                          ? orion_syscall_current_process_id()
+                          : process != NULL && thread->process == process
+                                ? process->id
+                                : 0,
         .thread_id = process != NULL && thread->process == process
                          ? thread->id
                          : 0,
         .error_code = frame->error_code,
         .address = fault_address,
-        .vector = (uint32_t)frame->vector,
+        .vector = (uint32_t)exception_vector,
         .category = ORION_FAULT_CPU_EXCEPTION,
         .context = from_user ? ORION_FAULT_CONTEXT_USER
                              : ORION_FAULT_CONTEXT_KERNEL_INTERRUPT,
-        .action = frame->vector == 3U ? ORION_FAULT_ACTION_CONTINUE
-                                      : ORION_FAULT_ACTION_HALT_KERNEL,
-        .recovery_result = frame->vector == 3U
+        .action = user_process_terminated
+                      ? ORION_FAULT_ACTION_TERMINATE_PROCESS
+                      : exception_vector == 3U
+                            ? ORION_FAULT_ACTION_CONTINUE
+                            : ORION_FAULT_ACTION_HALT_KERNEL,
+        .recovery_result = user_process_terminated ||
+                                   exception_vector == 3U
                                ? ORION_FAULT_RECOVERY_SUCCEEDED
                                : ORION_FAULT_RECOVERY_NOT_ATTEMPTED
     };
@@ -65,12 +79,11 @@ void orion_x86_64_exception_dispatch(orion_x86_64_exception_frame *frame)
         (void)orion_log(ORION_LOG_ERROR, "EXCEPTION",
                         "Structured fault report unavailable");
     }
-
     (void)orion_log_u64(ORION_LOG_ERROR, "EXCEPTION", "CPU exception vector",
-                        frame->vector);
+                        exception_vector);
     (void)orion_log_u64(ORION_LOG_ERROR, "EXCEPTION", "CPU error code",
                         frame->error_code);
-    if (frame->vector == 14U) {
+    if (exception_vector == 14U) {
         (void)orion_log_u64(ORION_LOG_ERROR, "EXCEPTION", "Page fault CR2",
                             fault_address);
         (void)orion_log_u64(ORION_LOG_ERROR, "EXCEPTION",
@@ -91,7 +104,12 @@ void orion_x86_64_exception_dispatch(orion_x86_64_exception_frame *frame)
                                 (frame->error_code >> 4U) & 1U);
         }
     }
-    if (frame->vector == 3U) {
+    if (user_process_terminated) {
+        (void)orion_log(ORION_LOG_ERROR, "EXCEPTION",
+                        "User application terminated after CPU exception");
+        return;
+    }
+    if (exception_vector == 3U) {
         (void)orion_log(ORION_LOG_INFO, "EXCEPTION",
                         "Breakpoint handled; resuming interrupted code");
         return;

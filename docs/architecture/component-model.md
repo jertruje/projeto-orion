@@ -80,5 +80,8 @@ Steps 2–7 are target behavior and must be revised against actual code.
   user-mode policy/services over mediated display/input resources. A GUI is not
   a kernel subsystem and cannot be an early boot dependency.
 
-These rules establish trust ownership, not implementation status. No
-filesystem, network protocol, application ABI or GUI is currently implemented.
+These rules establish trust ownership, not implementation status. The Phase 19
+baseline now has a deliberately narrow CPL3 syscall ABI and one independently
+linked QEMU test application; it does not yet expose filesystem, network,
+capability or IPC objects to user programs and is not the service lifecycle
+described above. A GUI is not implemented.
