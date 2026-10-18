@@ -2,15 +2,16 @@
 
 **Interpretação do lote:** “2” corresponde às fases 11–20, conforme o esquema
 combinado.  
-**Resultado atual:** Fase 11 parcial; Fase 12 parcialmente implementada para
+**Resultado atual:** Fases 11–17 parciais; Fase 12 implementada somente para
 threads do kernel; Fase 13 parcial em diagnóstico de falhas, sem supervisor ou
-recuperação de serviços; fases 14–20 bloqueadas por pré-requisitos técnicos.
+recuperação de serviços; fases 18–20 bloqueadas por pré-requisitos técnicos.
 Nenhum subsistema futuro foi simulado nem declarado funcional sem evidência.
 
 ## Estado atual após revalidação
 
-O repositório e os gates posteriores foram verificados antes de concluir que
-as fases não podem avançar com segurança:
+O estado abaixo reúne evidência dos gates já exercitados. A Fase 17 avançou
+para um caminho de rede parcial; as fases 18–20 continuam bloqueadas por
+dependências próprias:
 
 | Área necessária | Estado observado |
 |---|---|
@@ -20,10 +21,10 @@ as fases não podem avançar com segurança:
 | Processos, threads e scheduler | Fase 9 aceita apenas para processo kernel único e threads cooperativas em ring 0; troca de contexto/round-robin passam teste QEMU. Não existe execução em modo usuário ou isolamento entre processos. |
 | Capacidades e permissões | Parcial: gerenciador interno testado, integrado ao processo kernel e com handles/types/rights/revocation; sem user mode, isolamento ou mediação de operações reais de dispositivo/memória. |
 | IPC | Parcial: canais limitados com mensagens copiadas, capabilities por endpoint e operações não bloqueantes; host tests e troca real entre kernel threads em QEMU. Sem Ring 3, bloqueio/despertar, transferência de capabilities em mensagens ou SMP. |
-| Timer, relógio e sincronização | PIT/PIC IRQ0 e exclusão local do scheduler passam no teste da Fase 10; continuam ausentes relógio geral, timer queues, locks/atomics SMP e sincronização inter-CPU. |
-| Drivers e descoberta PCI | Ausentes. O dispositivo FAT usado no boot é apresentado pelo QEMU/firmware; isso não é um driver ORION. |
-| Armazenamento/VFS e persistência ORION | Ausentes. Não existe driver de bloco, filesystem ou updater do kernel. |
-| Rede | Ausente. |
+| Timer, relógio e sincronização | Fase 15 fornece clocksource coarse baseado em PIT IRQ0 e timer queue bounded com callbacks no idle context, host/QEMU testados. Sem sono/wakeup geral, locks/atomics SMP ou sincronização inter-CPU. |
+| Drivers e descoberta PCI | Parcial: registry bounded, UART COM1, enumeração PCI no bus 0 e driver NE2000 PCI PIO de escopo único exercitados. Não há suporte geral MMIO/IRQ/DMA, nem vários modelos de NIC. |
+| Armazenamento/VFS e persistência ORION | Parcial: block layer, ATA PIO primary-master LBA28, ORIONFS v1 e VFS interno. Host tests, ausência opcional em boot normal e persistência em dois processos QEMU passaram. Sem partições, journal, cache, atomicidade contra power loss, user descriptors ou SMP. |
+| Rede | Parcial: driver PCI NE2000 em QEMU, Ethernet/ARP/IPv4/ICMP Echo/UDP; host provou round trip UDP real via slirp. Sem TCP, DHCP, IPv6, sockets de usuário, SMP ou NIC física testada. |
 | Criptografia, assinatura e raiz de confiança | Ausentes. O loader não autentica criptograficamente o kernel; Secure Boot não foi configurado/testado. |
 | Syscalls, ABI de usuário e loader de aplicações | Ausentes. Não há transição ring 3, endereço de processo ou executáveis de usuário. |
 | GOP/framebuffer e entrada gráfica | Ausentes no contrato atual; sem teclado/mouse geridos pelo kernel. |
@@ -35,19 +36,20 @@ as fases não podem avançar com segurança:
 | 11 — Capacidades e isolamento | PARCIAL | Host negatives e QEMU startup self-test validam API interna e lifecycle básico. Gate de isolamento efetivo permanece aberto: Ring 3, roots independentes, syscalls, teardown integrado de processos, APIs reais de objetos e sincronização SMP ausentes. |
 | 12 — IPC | PARCIAL | Canais FIFO full-duplex, limitados e capability-protected; host negativos e tráfego entre duas kernel threads no QEMU. Sem wait/wakeup, caller user buffers, IPC de aplicações, cleanup de process exit ou SMP. |
 | 13 — Supervisor de falhas | PARCIAL: REGISTRO E POLÍTICA FAIL-STOP | Ring bounded e estático registra exceções CPU e panic; #BP retoma e as demais exceções testadas seguem para halt. Não há processos/serviços isolados, contenção de aplicação, restart, teardown IPC ou recuperação do kernel. Supervisor permanece bloqueado até lifecycle de processo/serviço e IPC seguro. |
-| 14 — Framework de drivers | BLOQUEADA | Há PMM, mapeamento ativo e timer legado de scheduler; faltam roteamento genérico de IRQ, sincronização, isolamento e recuperação necessários para drivers. Gate: fases 7–10 e infraestrutura de autoridade; iniciar com dispositivo virtual cuidadosamente delimitado. |
-| 15 — Temporizadores e energia | BLOQUEADA | O PIT é usado apenas pela preempção single-core da Fase 10; faltam serviço de relógio geral, ACPI, deadlines e abstração de drivers. Gate: interfaces de timer e driver da Fase 14. |
-| 16 — Armazenamento e filesystem | BLOQUEADA | Sem allocator, driver de dispositivo, timeout, sincronização ou framework de drivers. Não há dispositivo de bloco acessado pelo kernel. Gate: fases 8, 14 e 15. |
-| 17 — Rede | BLOQUEADA | Sem buffers/alocador, drivers de rede, interrupções, timer, sincronização ou sockets/API. Gate: fases 8, 14–16 conforme a pilha definida, com testes de protocolo isolados. |
+| 14 — Framework de drivers | PARCIAL: REGISTRO, PCI E UART | Registry bounded com lifecycle, enumeração PCI mechanism #1 no bus 0 e UART COM1. A Fase 17 acrescenta somente o binding específico NE2000/PIO; sem bridge traversal/ECAM, BAR sizing/alocação, MMIO genérico, IRQ de dispositivo, DMA/IOMMU, hot-plug, user-mode driver ou SMP. |
+| 15 — Temporizadores e energia | PARCIAL: PIT CLOCKSOURCE E DEADLINE QUEUE | PIT IRQ0 fornece nanosegundos monotônicos coarse; pool estático de 32 timers com cancelamento generacional, one-shot/periódico e callback fora da IRQ; host tests e expiração real QEMU passaram. Sem scheduler wait/wakeup, timeouts de IPC/drivers, ACPI, horário civil, eventos ou transições de energia. |
+| 16 — Armazenamento e filesystem | PARCIAL: ATA PIO, ORIONFS E VFS INTERNO | Block layer bounded, ATA PIO LBA28 primary-master, filesystem ORIONFS v1 e fachada VFS; host tests e prova de persistência em dois boots QEMU com disco dedicado passaram. Sem partições, journal, cache, atomicidade contra interrupção de energia, user mode/FDs, wait/wakeup, timeout de dispositivo ou SMP. |
+| 17 — Rede | PARCIAL: NE2000/PIO, IPv4, ICMP E UDP | Host tests cobrem checksums, ARP, IPv4, Echo, UDP, limites, malformed frames, ARP expiry, timeouts e falhas; QEMU 11.1.2/OVMF q35 detectou NE2000 `10ec:8029` e comprovou request/reply UDP byte-idêntico de 22 bytes entre host e guest. Sem TCP, DHCP, IPv6, user sockets, fila assíncrona, DMA de sistema, IRQ de dispositivo, SMP ou teste físico; ver `docs/network/networking.md`. |
 | 18 — Boot seguro e atualização | BLOQUEADA | Sem raiz de confiança, verificação de assinatura, criptografia, persistência ou mecanismo transacional de atualização. Hash isolado não atenderia aos critérios de autenticidade/rollback. Gate: escolher política de chaves e storage resiliente; validar firmware/secure-boot disponível. |
 | 19 — Syscalls e aplicações | BLOQUEADA | Embora GDT/TSS/IDT de ring 0 e scheduler single-CPU existam, não há memória de usuário, CPL3, processos isolados, capabilities, IPC, loader de user ELF ou ABI. Gate: fases 8–12 e contrato de processo/address space testado. |
 | 20 — Interface gráfica | BLOQUEADA | Sem GOP/framebuffer no boot-info, page mappings, scheduler/processos, drivers de display e entrada ou ambiente de aplicações. Gate: fases 8–9, 14, 19 e backend gráfico testado no QEMU. |
 
-O estado “BLOQUEADA” nas fases 14–20 não significa que os objetivos sejam
+O estado “BLOQUEADA” nas fases 18–20 não significa que os objetivos sejam
 impossíveis; significa que as precondições listadas ainda não existem e que
 declarar implementação integrada seria incorreto. A Fase 11 está parcial:
 documentar uma interface, adicionar tipos isolados ou produzir uma demo no host
-não satisfaz o gate de isolamento efetivo.
+não satisfaz o gate de isolamento efetivo. A Fase 17 também é parcial: a prova
+QEMU de um caminho de rede não representa suporte geral a dispositivos.
 
 ## Testes executados nesta auditoria e revalidação posterior
 
@@ -83,7 +85,27 @@ ficou ativa por 15 s antes de ser encerrada pelo harness.
 Os testes de Fase 11 validam a API interna de capabilities, incluindo testes
 host negativos e um autoteste de boot QEMU. Os testes de Fase 12 validam
 mensagens e tráfego entre kernel threads, mas não IPC Ring 3. Não há evidência
-de recuperação, drivers, storage, rede, assinaturas, syscalls ou GUI.
+de recuperação ampla, assinaturas, syscalls ou GUI. As Fases 16 e 17 têm
+evidência específica e escopo parcial descritos abaixo.
+
+## Resultado da Fase 15
+
+- `mingw32-make test-unit build inspect test-boot` passou após adicionar o
+  clocksource PIT e a fila de timers. A inspeção manteve o kernel ELF64
+  freestanding sem símbolos indefinidos.
+- Os testes host `time/timers` passaram: source indisponível, conversões e
+  overflow, monotonicidade/clamp, one-shot, periodic fixed-delay, cancelamento,
+  stale handles, firing BUSY, callback failure, exaustão de slots e cleanup.
+- QEMU realçou IRQ0 em timekeeping-only depois da etapa de preempção. A callback
+  one-shot de 30 ms expirou; quantum nominal calculado 10.000.150 ns; lateness
+  observada 453 ns; PIT ticks observados passaram de 7 para 10 no segmento
+  timekeeping. Um sample não caracteriza jitter/precisão garantida.
+- ACPI não foi lido: o boot-info não leva configuração UEFI/RSDP. Nenhum estado
+  ou evento de energia é suportado; não há desligamento, retomada ou sleep de
+  threads.
+- Estado final da Fase 15: **PARCIAL**. Naquele gate não existia driver de
+  bloco/filesystem. A Fase 16 avançou depois para o baseline síncrono e bounded
+  descrito em seu resultado; wait/wakeup/timeouts continuam indisponíveis.
 
 ## Evidência adicionada para a Fase 11
 
@@ -95,9 +117,41 @@ de recuperação, drivers, storage, rede, assinaturas, syscalls ou GUI.
 
 Os gates das Fases 11 e 12 permanecem parciais. A Fase 13 adicionou registro
 estruturado e política fail-stop, mas não contenção ou recuperação de serviços;
-as fases 14–20 continuam bloqueadas pelas dependências acima. As auditorias
+a Fase 16 permanece parcial, e a Fase 17 avançou depois para uma implementação
+parcial de rede. As fases 18–20 continuam bloqueadas pelas dependências
+próprias. As auditorias
 anteriores documentadas abaixo são históricas e não representam o estado atual
 das capabilities.
+
+## Resultado da Fase 16
+
+- `kernel/storage/`: contrato bounded de dispositivo de bloco com validação de
+  faixa, tamanho, alinhamento, disponibilidade e read-only.
+- `kernel/drivers/storage/ata_pio.*`: primary-master ATA PIO, IDENTIFY, LBA28,
+  polling com limite, setores de 512 bytes, leitura/escrita e cache flush.
+- `kernel/fs/orionfs.*` e `kernel/vfs/`: ORIONFS v1 em bytes little-endian,
+  superbloco com CRC32, bitmap, 64 inodes, diretórios, arquivos de até 3 KiB,
+  handles generacionais e VFS interno síncrono.
+- `mingw32-make test-unit build build/storage-test-kernel.elf` passou; testes
+  host exercitam limites, corrupção, remount, I/O, fail-closed e operações de
+  arquivo/diretório.
+- `mingw32-make test-storage-qemu` passou em QEMU 11.1.2/OVMF q35: com disco
+  dedicado de 16 MiB, o primeiro boot identificou 32.768 setores e gravou a
+  prova; após iniciar novo processo QEMU com a mesma imagem, o segundo boot
+  leu e comparou o conteúdo persistido. `mingw32-make test-boot` também passou
+  sem disco, confirmando que storage ausente não impede o boot normal.
+- A imagem de teste é criada e formatada apenas por ação explícita:
+  `mingw32-make prepare-storage-tool` seguido de
+  `scripts/prepare-storage-image.ps1 -Format`; substituir imagem existente
+  exige `-Force`. O kernel não formata discos no boot.
+- Limites: dispositivo legacy IDE primary-master apenas; sem MBR/GPT,
+  descoberta geral de dispositivos, cache/journal, transações, garantia contra
+  perda de energia, user mode/descriptors, concorrência SMP, timeout integrado
+  ao clocksource ou integração com processos. A parada forçada do processo
+  QEMU ocorre após flush/unmount no kernel e não é teste de power-cut.
+- Estado final da fase: **PARCIAL**; suporte de armazenamento além do caminho
+  QEMU testado e durabilidade sob falha abrupta continuam sem evidência.
+  Detalhes e comandos: [storage/filesystem.md](storage/filesystem.md).
 
 ## Evidência adicionada para a Fase 12
 
@@ -120,10 +174,10 @@ permanecem pendentes.
 - `README.md` — link para o estado do lote.
 - `scripts/validate-docs.ps1` — valida presença dos estados das fases 11–20.
 
-As threads kernel e o IPC interno ainda não desbloqueiam sozinhos as fases
-14–20: faltam Ring 3, address spaces independentes, supervisor, drivers e
-outros pré-requisitos. A Fase 13 está parcial; nenhuma fase 14–20 foi marcada
-como concluída.
+As threads kernel e o IPC interno não desbloqueiam por si as fases 18–20:
+faltam raiz de confiança, loader de aplicações em user mode e subsistema
+gráfico. As Fases 13–17 são parciais; nenhuma delas foi marcada como
+concluída.
 
 ## Evidência da Fase 13
 
@@ -138,13 +192,70 @@ como concluída.
 - Não foi demonstrado isolamento ou recuperação de processo/serviço; a Fase 13
   permanece parcial.
 
+## Evidência da Fase 14
+
+- `kernel/drivers/core/` contém registry bounded de 8 drivers/32 devices com
+  matching exclusivo, estados e cleanup na falha. Testes host cobrem entrada
+  inválida, dispositivo sem driver, init falha, cleanup, stop e invariantes.
+- `kernel/drivers/bus/pci.*` enumera funções de bus 0 via PCI mechanism #1;
+  testes host cobrem funções multifunção, IDs, classes, BAR metadata e
+  argumentos fora dos limites. Na Fase 14 não havia escrita de configuração;
+  a Fase 17 acrescenta apenas escrita do bit I/O decode no command register
+  para o driver NE2000, sem sizing/alocação de BAR.
+- `kernel/drivers/platform/uart16550.*` registra e inicia COM1 no boot real;
+  reaproveita a UART serial do kernel e usa polling com timeout finito.
+- Em QEMU 11.1.2/EDK2 `-machine q35 -m 256M -smp 1`, o log serial confirmou
+  o driver COM1 e seis funções PCI em bus 0: 8086:29c0, 1234:1111,
+  8086:10d3, 8086:2918, 8086:2922 e 8086:2930. A VM chegou a IDLE.
+- `mingw32-make test-unit build inspect test-boot` passou.
+- PCI discovery não é suporte funcional aos dispositivos enumerados. Apenas
+  o NE2000/PIO foi ligado depois, na Fase 17. BARs continuam sem sizing ou
+  alocação geral; faltam MMIO, IRQ routing, DMA, IOMMU, ECAM, bridge traversal,
+  hot-plug e execução isolada de drivers.
+
 ## Próximo caminho seguro
 
 1. Fechar o gate de isolamento de processo e privilégio antes de expor
    capabilities ou IPC a código hostil.
 2. Reauditar os gates de 13–20 antes de cada subsistema, sem pular dependências.
 
-O lote 2 não está concluído. As fases 11–13 são parciais; fases 14–20
-permanecem bloqueadas. A implementação da Fase 7 remove apenas o
-bloqueio específico de GDT/IDT para exceções CPU; não fornece user mode,
-supervisor de serviços ou isolamento entre processos.
+O lote 2 não está concluído. As fases 11–17 são parciais; fases 18–20
+permanecem bloqueadas. A implementação da Fase 7 remove apenas o bloqueio
+específico de GDT/IDT para exceções CPU; não fornece user mode, supervisor de
+serviços ou isolamento entre processos.
+
+## Resultado da Fase 17
+
+- `kernel/drivers/net/ne2k_pci.*` implementa o binding PCI `10ec:8029` para
+  NE2000/RTL8029. O dispositivo usa acesso PIO e memória interna da placa; não
+  há DMA para RAM do kernel nem IRQ de dispositivo.
+- `kernel/net/network.*` fornece interface genérica e buffers/limites fixos
+  para Ethernet II, ARP, IPv4, ICMPv4 Echo e UDP. Endereço estático é
+  configurado somente na imagem de teste. A ausência de NIC continua não fatal
+  no boot normal.
+- `tests/kernel/net/network_test.c` verifica vetores de checksum, ARP,
+  validação IPv4/ICMP/UDP, checksum/length UDP inválidos, quadro truncado,
+  limite e lifecycle dos endpoints, expiração ARP, timeouts finitos e erros de
+  transmissão.
+- `mingw32-make test-unit build inspect test-boot test-preemption-qemu` passou;
+  `mingw32-make test-network-qemu` passou; `mingw32-make validate-docs` e
+  `git diff --check` passaram. Diagnósticos do editor não reportaram erros nos
+  arquivos C alterados.
+- A integração QEMU 11.1.2/OVMF q35 detectou a NE2000 com MAC
+  `52:54:00:12:34:56`, MTU 1500 e IP de teste `10.0.2.15/24`. O host enviou
+  `ORION_PHASE17_UDP_ECHO` (22 bytes) a `127.0.0.1:40170`; o payload retornou
+  idêntico do guest `10.0.2.15:40171`. O ICMP ping ao gateway `10.0.2.2`
+  recebeu 1/1 resposta e perdeu zero pacotes. Amostras de RTT foram 0 e
+  10.000.151 ns com PIT nominal de 10.000.150 ns; a resolução coarse não
+  permite inferir latência sub-tick. Um snapshot após UDP registrou 3 TX, 3
+  RX, zero descartes e zero erros.
+- A regressão de armazenamento, ao usar a imagem padrão já persistida,
+  encontrou a prova antiga na primeira inicialização e não satisfez a
+  expectativa de uma imagem recém-formatada. O arquivo padrão foi preservado;
+  o teste foi repetido com imagem descartável nova
+  `build\orionfs-phase17-regression.raw`, preparada explicitamente com
+  `-Format`, e as duas inicializações passaram.
+- A fase permanece **PARCIAL**: TCP confiável, DHCP, IPv6, sockets de usuário,
+  múltiplos dispositivos/interfaces, estado de link, SMP, suporte físico e
+  outros NICs não foram implementados ou testados. Ver
+  [network/networking.md](network/networking.md) e ADR-0028.

@@ -6,12 +6,22 @@
 #include "../arch/x86_64/idt.h"
 #include "../arch/x86_64/interrupt_state.h"
 #include "../arch/x86_64/timer.h"
+#include "../drivers/bus/pci.h"
+#include "../drivers/core/driver.h"
+#include "../drivers/platform/uart16550.h"
+#include "../drivers/net/ne2k_pci.h"
+#include "../drivers/storage/ata_pio.h"
+#include "../fs/orionfs.h"
 #include "../mm/active_page_tables.h"
 #include "../mm/memory_map.h"
 #include "../mm/physical.h"
 #include "../ipc/channel.h"
 #include "../security/capability.h"
 #include "../task/scheduler.h"
+#include "../time/clocksource.h"
+#include "../time/timer.h"
+#include "../net/network.h"
+#include "../vfs/vfs.h"
 #include "log.h"
 #include "panic.h"
 #include "serial.h"
@@ -53,6 +63,7 @@ static orion_capability_handle ipc_qemu_sender_endpoint;
 static orion_capability_handle ipc_qemu_receiver_endpoint;
 static volatile uint32_t ipc_qemu_sent;
 static volatile uint32_t ipc_qemu_received;
+static volatile uint32_t timer_qemu_callback_count;
 
 static void capability_self_test_destructor(void *object)
 {
@@ -412,6 +423,94 @@ static bool context_switch_benchmark(void)
            orion_scheduler_check_invariants();
 }
 
+static bool timer_qemu_callback(orion_timer_handle handle, void *context)
+{
+    (void)handle;
+    if (context != (void *)&timer_qemu_callback_count ||
+        timer_qemu_callback_count == UINT32_MAX) {
+        return false;
+    }
+    ++timer_qemu_callback_count;
+    return true;
+}
+
+static bool timekeeping_self_test(void)
+{
+    if (!orion_x86_64_timer_start_timekeeping() ||
+        !orion_clocksource_init_pit() || !orion_timer_system_init()) {
+        return false;
+    }
+
+    uint64_t first_read = 0;
+    uint64_t second_read = 0;
+    if (!orion_clocksource_now_nanoseconds(&first_read) ||
+        !orion_clocksource_now_nanoseconds(&second_read) ||
+        second_read < first_read) {
+        return false;
+    }
+
+    timer_qemu_callback_count = 0;
+    orion_timer_handle handle;
+    if (orion_timer_arm_after(UINT64_C(30000000), 0,
+                              timer_qemu_callback,
+                              (void *)&timer_qemu_callback_count,
+                              &handle) != ORION_TIMER_OK) {
+        return false;
+    }
+
+    uint64_t start = 0;
+    if (!orion_clocksource_now_nanoseconds(&start) ||
+        start > UINT64_MAX - UINT64_C(1000000000)) {
+        return false;
+    }
+    const uint64_t timeout = start + UINT64_C(1000000000);
+    while (timer_qemu_callback_count == 0) {
+        __asm__ volatile("sti; hlt" : : : "memory");
+        uint64_t now = 0;
+        uint32_t callbacks_run = 0;
+        if (!orion_clocksource_now_nanoseconds(&now) ||
+            now >= timeout ||
+            !orion_timer_run_expired(ORION_TIMER_CAPACITY,
+                                     &callbacks_run)) {
+            return false;
+        }
+    }
+
+    orion_clocksource_stats clock_stats;
+    orion_timer_stats timer_stats;
+    orion_x86_64_timer_stats hardware_timer_stats;
+    uint64_t pit_quantum_nanoseconds = 0;
+    const bool interrupts_were_enabled =
+        orion_x86_64_interrupts_save_disable();
+    const bool hardware_stats_valid =
+        orion_x86_64_timer_get_stats(&hardware_timer_stats);
+    orion_x86_64_interrupts_restore(interrupts_were_enabled);
+    if (timer_qemu_callback_count != 1 ||
+        !hardware_stats_valid ||
+        !orion_clocksource_get_stats(&clock_stats) ||
+        !orion_timer_get_stats(&timer_stats) ||
+        !orion_timer_check_invariants() || timer_stats.active != 0 ||
+        timer_stats.expirations != 1 ||
+        !orion_clocksource_ticks_to_nanoseconds(
+            1, ORION_X86_64_PIT_DIVISOR, ORION_X86_64_PIT_INPUT_HZ,
+            &pit_quantum_nanoseconds) ||
+        !orion_log_u64(ORION_LOG_INFO, "TIME",
+                       "PIT IRQ0 ticks in timekeeping test:",
+                       hardware_timer_stats.ticks) ||
+        !orion_log_u64(ORION_LOG_INFO, "TIME",
+                       "Clocksource reads in timekeeping test:",
+                       clock_stats.reads) ||
+        !orion_log_u64(ORION_LOG_INFO, "TIME",
+                       "PIT nominal quantum ns:", pit_quantum_nanoseconds) ||
+        !orion_log_u64(ORION_LOG_INFO, "TIME",
+                       "One-shot timer maximum lateness ns:",
+                       timer_stats.max_lateness_nanoseconds)) {
+        return false;
+    }
+    return orion_log(ORION_LOG_INFO, "TIME",
+                     "Hardware-backed PIT deadline timer test passed");
+}
+
 static bool capability_self_test(void)
 {
     orion_process *kernel_process = orion_process_kernel();
@@ -470,6 +569,256 @@ static void advance_stage(orion_init_stage expected, orion_init_stage next)
     if (!orion_log(ORION_LOG_INFO, "INIT", orion_init_stage_name(next))) {
         orion_panic_at("INIT", "failed to log initialization stage");
     }
+}
+
+static bool pci_device_discovered(void *context,
+                                 const orion_pci_device *pci_device)
+{
+    (void)context;
+    orion_device device = {
+        .bus = ORION_DEVICE_PCI,
+        .bus_number = pci_device->bus,
+        .device_number = pci_device->device,
+        .function_number = pci_device->function,
+        .vendor_id = pci_device->vendor_id,
+        .device_id = pci_device->device_id,
+        .class_code = pci_device->class_code,
+        .subclass = pci_device->subclass,
+        .programming_interface = pci_device->programming_interface,
+        .revision = pci_device->revision,
+        .bar_count = pci_device->bar_count
+    };
+    for (uint32_t index = 0; index < pci_device->bar_count; ++index) {
+        device.bars[index] = pci_device->bars[index];
+    }
+    if (!orion_driver_add_device(&device)) {
+        return false;
+    }
+    return orion_log_u64(ORION_LOG_INFO, "PCI",
+                         "Device vendor:device",
+                         ((uint64_t)pci_device->vendor_id << 16) |
+                             pci_device->device_id) &&
+           orion_log_u64(ORION_LOG_INFO, "PCI",
+                         "Device bus:device:function",
+                         ((uint64_t)pci_device->bus << 16) |
+                             ((uint64_t)pci_device->device << 8) |
+                             pci_device->function);
+}
+
+#if defined(ORION_STORAGE_QEMU_TEST)
+static bool storage_filesystem_self_test(orion_block_device *device)
+{
+    static const char path[] = "/phase16-persistence-proof";
+    static const char payload[] = "ORION_PHASE16_PERSISTENCE_V1";
+    if (orion_vfs_mount(device) != ORIONFS_OK) {
+        return false;
+    }
+
+    orion_vfs_info info;
+    orion_vfs_status status = orion_vfs_stat(path, &info);
+    if (status == ORIONFS_NOT_FOUND) {
+        if (orion_vfs_create(path, ORIONFS_NODE_FILE) != ORIONFS_OK) {
+            return false;
+        }
+        orion_vfs_handle handle;
+        uint64_t bytes_written = 0;
+        if (orion_vfs_open(path, &handle) != ORIONFS_OK ||
+            orion_vfs_write(handle, 0, payload, sizeof(payload) - 1U,
+                            &bytes_written) != ORIONFS_OK ||
+            bytes_written != sizeof(payload) - 1U ||
+            orion_vfs_close(handle) != ORIONFS_OK ||
+            orion_block_sync(device) != ORION_BLOCK_OK ||
+            orion_vfs_unmount() != ORIONFS_OK) {
+            return false;
+        }
+        return orion_log(ORION_LOG_INFO, "STORAGE",
+                         "Persistence proof committed; reboot to verify");
+    }
+    if (status != ORIONFS_OK || info.type != ORIONFS_NODE_FILE ||
+        info.size != sizeof(payload) - 1U) {
+        return false;
+    }
+
+    uint8_t actual[sizeof(payload)] = {0};
+    uint64_t bytes_read = 0;
+    orion_vfs_handle handle;
+    if (orion_vfs_open(path, &handle) != ORIONFS_OK ||
+        orion_vfs_read(handle, 0, actual, sizeof(payload) - 1U,
+                       &bytes_read) != ORIONFS_OK ||
+        bytes_read != sizeof(payload) - 1U ||
+        orion_vfs_close(handle) != ORIONFS_OK ||
+        orion_vfs_unmount() != ORIONFS_OK) {
+        return false;
+    }
+    for (uint32_t index = 0; index < sizeof(payload) - 1U; ++index) {
+        if (actual[index] != (uint8_t)payload[index]) {
+            return false;
+        }
+    }
+    return orion_log(ORION_LOG_INFO, "STORAGE",
+                     "Persistence proof recovered across QEMU boots");
+}
+#endif
+
+#if defined(ORION_NETWORK_QEMU_TEST)
+static bool network_clock_read(void *context, uint64_t *now_nanoseconds)
+{
+    (void)context;
+    return orion_clocksource_now_nanoseconds(now_nanoseconds);
+}
+
+static void network_test_udp_echo(void *context, uint32_t source_ipv4,
+                                  uint16_t source_port,
+                                  const uint8_t *payload,
+                                  uint16_t payload_bytes)
+{
+    static bool stats_reported;
+    (void)context;
+    (void)orion_log(ORION_LOG_INFO, "NET",
+                    "UDP echo request received");
+    if (orion_net_udp_send(40171, source_ipv4, source_port,
+                           payload, payload_bytes) == ORION_NET_OK) {
+        (void)orion_log(ORION_LOG_INFO, "NET",
+                        "UDP echo response transmitted");
+    }
+    if (!stats_reported) {
+        orion_net_stats stats;
+        stats_reported = true;
+        if (orion_net_get_stats(&stats)) {
+            (void)orion_log_u64(ORION_LOG_INFO, "NET", "TX frames:",
+                                stats.tx_frames);
+            (void)orion_log_u64(ORION_LOG_INFO, "NET", "RX frames:",
+                                stats.rx_frames);
+            (void)orion_log_u64(ORION_LOG_INFO, "NET", "RX dropped:",
+                                stats.rx_dropped);
+            (void)orion_log_u64(ORION_LOG_INFO, "NET", "TX errors:",
+                                stats.tx_errors);
+            (void)orion_log_u64(ORION_LOG_INFO, "NET", "RX errors:",
+                                stats.rx_errors);
+        }
+    }
+}
+#endif
+
+static bool driver_framework_self_test(void)
+{
+    static const orion_device serial_device = {
+        .bus = ORION_DEVICE_PLATFORM,
+        .platform_name = "uart16550-com1"
+    };
+    orion_driver_binding binding;
+    orion_pci_scan_result pci_result;
+
+    if (!orion_driver_system_init() ||
+        !orion_driver_register(orion_uart16550_driver()) ||
+        !orion_driver_register(orion_ne2k_pci_driver()) ||
+        !orion_driver_add_device(&serial_device) ||
+        !orion_driver_bind_device(0) ||
+        !orion_driver_get_binding(0, &binding) ||
+        binding.state != ORION_DRIVER_ONLINE ||
+        binding.driver != orion_uart16550_driver() ||
+        !orion_pci_scan_bus(0, orion_pci_read_config_legacy,
+                            pci_device_discovered, NULL, &pci_result)) {
+        return false;
+    }
+    bool network_device_found = false;
+    for (uint32_t index = 1; index < orion_driver_device_count(); ++index) {
+        orion_driver_binding pci_binding;
+        if (!orion_driver_get_binding(index, &pci_binding)) {
+            return false;
+        }
+        if (pci_binding.device.vendor_id != UINT16_C(0x10ec) ||
+            pci_binding.device.device_id != UINT16_C(0x8029)) {
+            continue;
+        }
+        network_device_found = true;
+        if (!orion_driver_bind_device(index) ||
+            !orion_driver_get_binding(index, &pci_binding) ||
+            pci_binding.state != ORION_DRIVER_ONLINE ||
+            pci_binding.driver != orion_ne2k_pci_driver()) {
+            (void)orion_log(ORION_LOG_WARN, "NET",
+                            "NE2000 PCI device found but initialization failed");
+            continue;
+        }
+        const orion_net_interface *network =
+            orion_ne2k_pci_interface();
+        if (network == NULL ||
+            !orion_log(ORION_LOG_INFO, "NET",
+                       "NE2000 PCI interface online; MAC available") ||
+            !orion_log_u64(ORION_LOG_INFO, "NET", "Interface MTU:",
+                           network->mtu)) {
+            return false;
+        }
+        for (uint32_t mac_index = 0; mac_index < ORION_NET_MAC_BYTES;
+             ++mac_index) {
+            if (!orion_log_u64(ORION_LOG_INFO, "NET", "MAC byte:",
+                               network->mac[mac_index])) {
+                return false;
+            }
+        }
+    }
+    if (!network_device_found &&
+        !orion_log(ORION_LOG_WARN, "NET",
+                   "No supported NE2000 PCI network interface detected")) {
+        return false;
+    }
+#if defined(ORION_NETWORK_QEMU_TEST)
+    if (!orion_net_is_available()) {
+        return false;
+    }
+#endif
+    if (!orion_log_u64(ORION_LOG_INFO, "DRIVER",
+                       "PCI functions discovered on bus 0:",
+                       pci_result.discovered) ||
+        !orion_log_u64(ORION_LOG_WARN, "DRIVER",
+                       "PCI functions rejected by bounded inventory:",
+                       pci_result.rejected) ||
+        !orion_log_u64(ORION_LOG_INFO, "DRIVER",
+                       "Devices recorded in bounded inventory:",
+                       orion_driver_device_count()) ||
+        !orion_log(ORION_LOG_INFO, "DRIVER",
+                   "16550-compatible COM1 lifecycle passed")) {
+        return false;
+    }
+
+    if (!orion_ata_pio_prepare()) {
+#if defined(ORION_STORAGE_QEMU_TEST)
+        return false;
+#else
+        return orion_log(ORION_LOG_WARN, "STORAGE",
+                         "No supported primary-master ATA disk detected");
+#endif
+    }
+    const uint32_t ata_device_index = orion_driver_device_count();
+    static const orion_device ata_device = {
+        .bus = ORION_DEVICE_PLATFORM,
+        .platform_name = "ata-primary-master"
+    };
+    orion_driver_binding ata_binding;
+    if (!orion_driver_register(orion_ata_pio_driver()) ||
+        !orion_driver_add_device(&ata_device) ||
+        !orion_driver_bind_device(ata_device_index) ||
+        !orion_driver_get_binding(ata_device_index, &ata_binding) ||
+        ata_binding.state != ORION_DRIVER_ONLINE ||
+        ata_binding.driver != orion_ata_pio_driver()) {
+        return false;
+    }
+    orion_block_device *block_device = orion_ata_pio_block_device();
+    if (block_device == NULL ||
+        !orion_block_device_is_valid(block_device) ||
+        !orion_log_u64(ORION_LOG_INFO, "STORAGE",
+                       "ATA primary-master sectors:",
+                       block_device->block_count) ||
+        !orion_log(ORION_LOG_INFO, "STORAGE",
+                   "ATA PIO block device online")) {
+        return false;
+    }
+#if defined(ORION_STORAGE_QEMU_TEST)
+    if (!storage_filesystem_self_test(block_device)) {
+        return false;
+    }
+#endif
+    return orion_driver_check_invariants();
 }
 
 void kernel_main(const orion_boot_info *boot_info)
@@ -572,6 +921,10 @@ void kernel_main(const orion_boot_info *boot_info)
         orion_panic_at("CORE", "serial logging failed after core initialization");
     }
 
+    if (!driver_framework_self_test()) {
+        orion_panic_at("DRIVER", "driver or PCI discovery self-test failed");
+    }
+
     if (!tasking_self_test()) {
         orion_panic_at("TASK", "cooperative tasking self-test failed");
     }
@@ -584,6 +937,21 @@ void kernel_main(const orion_boot_info *boot_info)
     if (!context_switch_benchmark()) {
         orion_panic_at("SCHED", "context-switch benchmark failed");
     }
+    if (!timekeeping_self_test()) {
+        orion_panic_at("TIME", "monotonic clock or timer self-test failed");
+    }
+#if defined(ORION_NETWORK_QEMU_TEST)
+    if (orion_net_configure(UINT32_C(0x0a00020f),
+                            UINT32_C(0xffffff00),
+                            UINT32_C(0x0a000202),
+                            network_clock_read, NULL) != ORION_NET_OK ||
+        orion_net_udp_bind(40171, network_test_udp_echo, NULL) !=
+            ORION_NET_OK) {
+        orion_panic_at("NET", "network test configuration failed");
+    }
+    (void)orion_log(ORION_LOG_INFO, "NET",
+                    "IPv4 10.0.2.15/24 configured; UDP echo port 40171 ready");
+#endif
 
     advance_stage(ORION_INIT_CORE_READY, ORION_INIT_IDLE);
     if (!orion_log(ORION_LOG_INFO, "CORE",
@@ -591,7 +959,51 @@ void kernel_main(const orion_boot_info *boot_info)
         orion_panic_at("CORE", "serial logging failed before idle loop");
     }
 
+    orion_x86_64_interrupts_enable();
+#if defined(ORION_NETWORK_QEMU_TEST)
+    orion_net_ping_result ping_result;
+    const orion_net_status ping_status =
+        orion_net_ping(UINT32_C(0x0a000202), 1000, &ping_result);
+    (void)orion_log(
+        ping_status == ORION_NET_OK ? ORION_LOG_INFO : ORION_LOG_WARN,
+        "NET", ping_status == ORION_NET_OK
+                   ? "ICMP ping to 10.0.2.2 succeeded"
+                   : ping_status == ORION_NET_TIMEOUT
+                         ? "ICMP ping to 10.0.2.2 timed out"
+                         : "ICMP ping to 10.0.2.2 failed");
+    (void)orion_log_u64(ORION_LOG_INFO, "NET", "Ping requests sent:",
+                        ping_result.requests_sent);
+    (void)orion_log_u64(ORION_LOG_INFO, "NET", "Ping replies received:",
+                        ping_result.replies_received);
+    (void)orion_log_u64(
+        ORION_LOG_INFO, "NET", "Ping packets lost:",
+        ping_result.requests_sent > ping_result.replies_received
+            ? ping_result.requests_sent - ping_result.replies_received
+            : 0);
+    (void)orion_log_u64(ORION_LOG_INFO, "NET", "Ping RTT nanoseconds:",
+                        ping_result.round_trip_nanoseconds);
+    (void)orion_log(
+        ORION_LOG_INFO, "NET",
+        "Ping RTT uses coarse PIT ticks; zero means below clock resolution");
+#endif
     for (;;) {
-        __asm__ volatile("cli; hlt");
+        uint32_t callbacks_run = 0;
+        if (!orion_timer_run_expired(ORION_TIMER_CAPACITY, &callbacks_run)) {
+            orion_panic_at("TIME", "timer callback dispatch failed");
+        }
+        if (orion_net_is_available() && orion_net_is_configured()) {
+            uint32_t frames_received = 0;
+            const orion_net_status net_status =
+                orion_net_poll(8, &frames_received);
+            static bool network_poll_failure_reported;
+            if (net_status != ORION_NET_OK &&
+                net_status != ORION_NET_BUSY &&
+                !network_poll_failure_reported) {
+                network_poll_failure_reported = true;
+                (void)orion_log(ORION_LOG_WARN, "NET",
+                                "Network receive polling reported an error");
+            }
+        }
+        __asm__ volatile("hlt" : : : "memory");
     }
 }

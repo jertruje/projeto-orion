@@ -13,6 +13,8 @@ Document presence alone is insufficient.
 | Memory (8) | Safe exception path and boot map audited | Physical allocation, page tables/permissions, page fault diagnosis, reserved region tests |
 | Threads/scheduler (9) | Memory and ABI validated | At least two kernel threads alternate, lifecycle and queue invariants tested |
 | Timer/SMP (10) | Safe IDT, normalized interrupt frame, scheduler critical sections | PIT/PIC IRQ0 preemption with CPU-bound QEMU test and measured counters; SMP stays blocked until AP startup and multi-vCPU ownership tests |
+| Block storage/filesystem (16) | Validated memory buffers and block contract; bounded driver I/O | Host range/error/corruption/fail-closed tests; explicit image formatting; normal boot with no disk; device-specific QEMU read/write and persistence across new QEMU processes; no power-loss claim without injection/recovery tests |
+| Network (17) | Bounded network interface, tested timer, PCI discovery and explicit device strategy | Malformed/checksum/bounds/timeout unit tests; normal boot without NIC; real device-specific QEMU send/receive and protocol round trip; protocol, buffer ownership and non-goals documented |
 | Capabilities/IPC (11–12) | User/process address spaces and lifecycle exist | Negative rights, attenuation/revocation, malformed messages, quotas and teardown tests |
 | Supervisor/drivers/time/storage/network (13–17) | Prerequisite mechanism and device mediation complete | Fault injection, lifecycle, device-specific QEMU/hardware, data integrity and performance data |
 | Verified boot/package (18, 21) | Trust root and persistent transactional storage designed | Wrong key/corrupt/rollback rejection; power-cut update/install/remove integrity tests |
@@ -168,3 +170,74 @@ an event is emitted for controlled CPU exceptions. The panic policy remains
 fail-stop. No user process/service isolation, process-exit IPC cleanup,
 supervisor, bounded restart policy, or service recovery is implemented; those
 acceptance criteria remain open.
+
+## Driver framework gate result
+
+**Phase 14 partially implemented and tested.** The bounded registry, exclusive
+driver match/lifecycle, cleanup after failed startup, read-only PCI mechanism
+#1 enumeration on bus 0, and a working QEMU COM1 UART driver are exercised by
+host tests and QEMU q35 boot. PCI discovery does not mean a PCI function has a
+working driver. ECAM, bridge traversal, BAR sizing/allocation, MMIO mapping,
+device IRQ routing, DMA/IOMMU, hot-plug and user-mode driver isolation remain
+open; the phase is not approved as broad hardware support.
+
+## Time and power gate result
+
+**Phase 15 partially implemented and tested.** PIT IRQ0 provides a checked,
+coarse monotonic nanosecond clocksource, and a static 32-slot timer queue
+supports one-shot/periodic deadlines, cancellation and callbacks dispatched
+outside interrupt context. Host tests cover conversion, monotonic clamping,
+timer lifecycle, reentrant cancellation and callback failure. QEMU/OVMF q35
+on one vCPU passed a 30 ms one-shot timer with a recorded nominal PIT quantum
+of 10,000,150 ns and one observed lateness sample of 453 ns.
+
+The scheduler has no general block/wakeup operation, so timed thread sleep,
+blocking IPC/device timeouts and event wakeups are not implemented. The boot
+contract supplies no ACPI RSDP/configuration table list; the kernel reads no
+ACPI data. No civil clock, power event, shutdown, reboot, suspend, hibernate
+or resume state is supported. The `hlt` idle instruction is not an ACPI
+system-state transition. The phase remains partial pending these integrations
+and statistically meaningful timing tests.
+
+## Storage and filesystem gate result
+
+**Phase 16 partially implemented and tested for one QEMU configuration.**
+The block layer checks device state, ranges, byte counts and alignment. The
+primary-master ATA PIO driver uses IDENTIFY/LBA28, 512-byte sectors, bounded
+polling, synchronous I/O and cache flush. ORIONFS v1 and the internal VFS
+provide bounded metadata/files/directories; I/O failures invalidate the
+mounted instance so callers must remount before continuing.
+
+Host unit tests cover block errors, filesystem operations, remount/corruption
+and fail-closed behavior. QEMU 11.1.2/OVMF q35 discovered a dedicated 16 MiB
+image, wrote a proof file, and a fresh QEMU process read and compared the
+persisted bytes. The normal no-data-disk boot also passed. Formatting is a
+separate explicit host tool action; the normal kernel boot never formats a
+disk. The QEMU harness stops each VM after the kernel has flushed and
+unmounted; this is not a power-cut simulation or a graceful guest shutdown.
+
+This does not establish generic IDE/PCI support, physical hardware support,
+partition discovery, journaling, atomic updates, power-loss recovery, SMP
+safety, user filesystem descriptors, asynchronous I/O or performance
+superiority. ORIONFS uses at most 4096 sectors (2 MiB), even if the backing
+device is larger. See [filesystem.md](storage/filesystem.md) for format,
+commands and exact limits.
+
+## Network gate result
+
+**Phase 17 partially implemented and tested for one QEMU device/network path.**
+Host unit tests exercise protocol checksums, ARP, IPv4, ICMP Echo, UDP endpoint
+limits/lifecycle, malformed/truncated input, finite ARP/ICMP timeouts and
+transmit errors. QEMU 11.1.2/OVMF q35 detects the NE2000-compatible PCI device
+(`10ec:8029`); its PIO driver transfers frames through the card's on-device
+memory without system RAM DMA. A Windows host sent a 22-byte UDP payload
+through QEMU user networking to guest port 40171 and received the identical
+payload via the forwarded host port 40170. The network-test image also emits
+bounded ICMP ping and counter diagnostics.
+
+Only that QEMU NIC and slirp path are tested. TCP, DHCP, IPv6, user sockets,
+general routing, physical link state, device IRQs, system DMA, SMP safety and
+physical hardware support remain unimplemented or unvalidated. Ordinary boot
+continues when the NIC is absent. See
+[networking.md](network/networking.md) for bounds, buffer lifetime, exact
+configuration and commands.

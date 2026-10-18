@@ -15,6 +15,9 @@ substitui dados de teste.
 | ADR-0007 | Aceita para bring-up | Build de desenvolvimento mantém mensagens seriais; teste QEMU observa eventos do boot. | Diagnóstico simples sem libc/GUI. | Mensagens não equivalem a métricas; saída serial não é concorrente-safe. |
 | ADR-0008 | Proposta | Manter interrupts/preemption/SMP desativados até seus pré-requisitos serem testados. | Evita habilitar caminhos incompletos sem IDT/controlador/context switch. | Fases 7–10 precisam demonstrar cada transição antes de ativar. |
 | ADR-0024 | Parcialmente aceita | Registrar falhas em ring estático bounded; falhas críticas continuam fail-stop. | Captura diagnóstico sem heap/locks, mas ausência de processos isolados impede contenção/restart segura. | Host e QEMU validam registro; supervisão, recuperação e SMP permanecem pendentes. |
+| ADR-0025 | Parcialmente aceita | Registry limitado, PCI mechanism #1 somente leitura no bus 0 e driver platform COM1. | Plataforma q35 e UART existentes oferecem primeiro caminho de ponta a ponta sem habilitar DMA nem escrever BARs. | Host/QEMU validam lifecycle, scanner e UART; sem driver PCI, MMIO, IRQ routing, DMA, ECAM, isolamento ou cobertura geral de hardware. |
+| ADR-0026 | Parcialmente aceita | Usar PIT IRQ0 tanto para a preempção testada quanto, em modo separado, como clocksource coarse; callbacks de deadlines ficam numa fila estática de 32 slots e são executados fora da IRQ. | Reutiliza o único timer que o kernel realmente inicializa; leitura PIT não exige pressupor invariância/frequência de TSC nem mapeamentos ACPI. Uma varredura bounded é suficiente para a capacidade atual. | Host tests cobrem conversão, monotonicidade, cancelamento, expiração, periodicidade e falhas; QEMU prova expiração real PIT. Sem sleep/wakeup do scheduler, timeouts bloqueantes, SMP, ACPI ou transição de energia. Revisar quando outra fonte/timer de dispositivo validado existir. |
+| ADR-0027 | Parcialmente aceita | Primeiro armazenamento usa block layer bounded, ATA PIO primary-master e ORIONFS v1; imagem só é formatada por ferramenta explícita. | QEMU q35 oferece IDE legado testável agora; formato pequeno e sem partições delimita o primeiro gate. O boot não deve formatar nem montar/escrever automaticamente em mídia desconhecida. | Host tests, boot sem disco e persistência após novo processo QEMU passaram. Sem journaling, atomicidade a power loss, partições, cache, user descriptors, timeout de dispositivo ou SMP; suportar apenas a configuração efetivamente testada. |
 
 | ADR-0009 | Aceita como arquitetura-base | Microkernel mínimo com capabilities para autoridade; serviços/drivers em user mode por padrão. | Alinha placement aos requisitos de contenção; trade-offs e lacunas de pesquisa explícitos. | Não prova segurança/desempenho; revisar com testes/medições de IPC, isolamento e recuperação. |
 | ADR-0010 | Aceita como baseline | IPC síncrono request/reply, copiado, limitado e com quotas para controle. | Ownership simples para primeira implementação; shared memory adiada até necessidade medida. | Medir p50/p95/p99, throughput, jitter e CPU/op; limites definidos no gate de implementação. |
@@ -617,3 +620,133 @@ de dados de hardware/workload permanecem parametrizadas e têm gates explícitos
 - **Critérios de revisão:** adicionar lifecycle de processos, Ring 3,
   revogação/teardown IPC e supervisor independente antes de restart; testar
   contenção e loop de falha em QEMU antes de aprovar a fase.
+
+### ADR-0025 — Registry bounded, PCI read-only e UART COM1 (ACEITA PARA FASE 14 PARCIAL)
+
+- **Contexto/problema:** o kernel usava COM1 diretamente para logs, mas não
+  possuía lifecycle de drivers nem inventário de funções PCI; recursos como
+  MMIO, interrupções gerais e DMA ainda não têm mediação segura.
+- **Alternativas consideradas:** criar interfaces sem um dispositivo testado;
+  implementar controladores PCI com writes a BAR/command sem resource manager;
+  reutilizar COM1 como primeiro driver concreto e limitar PCI a leituras
+  verificáveis em QEMU.
+- **Evidências:** host tests validam registry, startup/cleanup e scanner com
+  configuração injetável. QEMU 11.1.2/EDK2 q35 executou serial COM1 e detectou
+  seis funções em PCI bus 0. Nenhum BAR foi escrito.
+- **Decisão:** adicionar registry estático de 8 drivers/32 devices, binding
+  exclusivo e cleanup explícito; enumerar apenas bus 0 com PCI config
+  mechanism #1 somente leitura; registrar/inicializar COM1 antes da atividade
+  geral do scheduler.
+- **Consequências positivas:** há um driver real exercitado e inventário de
+  hardware com identificação verificável; falha de inicialização retorna
+  explicitamente, limpa recursos e entra em FAILED.
+- **Consequências negativas:** drivers permanecem no Ring 0; inventário é
+  limitado e apenas bus 0; callback registry não é SMP-safe; driver COM1 é
+  dependente de legado.
+- **Riscos residuais:** não há contenção de driver comprometido; BARs são
+  metadados não validados para uso; ausência de IRQ routing, MMIO e DMA impede
+  operar os dispositivos PCI descobertos.
+- **Critérios de revisão:** implementar resource manager e validação/reserva
+  BAR antes de mapear MMIO; percorrer bridges com limites; adicionar driver PCI
+  virtual sem bus mastering; só habilitar IRQ/DMA após handler, teardown,
+  buffers e IOMMU/endereço DMA serem testados.
+
+### ADR-0026 — PIT clocksource e timer queue limitada (ACEITA PARA FASE 15 PARCIAL)
+
+- **Contexto/problema:** a Fase 10 fornecia interrupção de PIT para preempção,
+  mas não expunha relógio monotônico nem deadlines reutilizáveis. TSC não foi
+  validado para frequência/invariância ou sincronização; ACPI não é passado no
+  boot-info.
+- **Alternativas consideradas:** TSC sem calibração/CPUID verificados; HPET ou
+  APIC timer sem discovery/driver; usar PIT IRQ0 já inicializado; não fornecer
+  relógio geral até obter outra plataforma.
+- **Evidências:** host tests exercitam conversão racional, overflow, clamp,
+  ciclo de vida de timers, cancelamento durante firing e limites. QEMU
+  11.1.2/OVMF q35 com uma vCPU demonstrou IRQ0 contínuo após preempção e
+  expiração one-shot de 30 ms; quantum nominal 10.000.150 ns e lateness 453 ns
+  em uma amostra.
+- **Decisão:** expor ticks PIT como nanossegundos monotônicos coarse; manter
+  pool estático de 32 deadlines com handles generacionais; somente executar
+  callbacks no loop idle, fora da IRQ. Reusar PIT em modo timekeeping sem
+  preempção depois do autoteste de scheduler.
+- **Consequências positivas:** fonte e mecanismo de interrupção são
+  explicitamente distintos; sem TSC presumido, heap/allocator ou callbacks de
+  timer em IRQ; conversões/overflow e ciclo de vida têm testes.
+- **Consequências negativas:** resolução limitada ao quantum PIT; callback
+  dispatch depende do idle loop; pool e sincronização são single-core; uma
+  amostra QEMU não demonstra latência determinística.
+- **Riscos residuais:** no-sleep scheduler não pode ser despertado por
+  deadlines; timeouts de IPC/drivers, civil time, ACPI/energia, SMP e hardware
+  físico continuam ausentes. `orion_boot_info` não fornece RSDP/configuration
+  tables, e nenhum estado ACPI foi inspecionado.
+- **Critérios de revisão:** adicionar espera temporizada somente junto de
+  estados de bloqueio/wakeup e teardown testados; selecionar outra fonte após
+  detecção/validação de hardware; aceitar ACPI apenas com discovery e checagem
+  de limites/checksum; não declarar jitter garantido sem distribuição medida.
+
+### ADR-0027 — ATA PIO e ORIONFS com formatação explícita (ACEITA PARA FASE 16 PARCIAL)
+
+- **Contexto/problema:** o kernel ainda não tinha I/O persistente, mas o
+  scheduler não fornece wait/wakeup geral e o framework PCI só enumera
+  configurações. Uma implementação integrada precisava permanecer síncrona,
+  limitada e testável sem alterar discos desconhecidos.
+- **Alternativas consideradas:** adiar armazenamento até haver VirtIO e
+  sincronização bloqueante; usar dispositivo de bloco de QEMU com ATA legado
+  presente no ambiente; importar um filesystem existente; formatar
+  automaticamente durante o boot. Foi escolhido o dispositivo ATA disponível
+  e um formato ORION próprio; automount/format automático foi rejeitado.
+- **Decisão:** primeiro driver primary-master ATA PIO LBA28, setor de 512
+  bytes, polling bounded e cache flush; block layer valida contratos; ORIONFS
+  v1 usa superbloco CRC, bitmap, 64 inodes e seis blocos diretos por arquivo;
+  VFS é apenas fachada interna de kernel. Formatador de imagem exige ação
+  explícita, e substituir imagem requer `-Force`.
+- **Evidência:** host tests cobrem limites, conteúdo, metadados, corrupção,
+  erros I/O e fail-closed. QEMU 11.1.2/OVMF q35 identificou 32.768 setores
+  numa imagem dedicada de 16 MiB; primeiro boot escreveu prova, processo QEMU
+  novo recuperou e comparou os mesmos bytes. Boot normal sem disco passou.
+- **Consequências/limites:** filesystem suporta no máximo 4096 blocos (2 MiB),
+  não há tabela de partições, journal, cache, atomicidade, locking SMP,
+  isolamento, descritores de usuário, timeouts pelo clocksource ou recuperação
+  garantida após power loss. A prova entre boots valida somente a imagem raw
+  em QEMU/OVMF e não constitui garantia de durabilidade para hardware físico.
+- **Critérios de revisão:** antes de ampliar suporte, comparar VirtIO/PCI com
+  o caminho ATA e criar testes de erro/recuperação. Antes de alegar integridade
+  contra falha abrupta, adicionar journaling ou protocolo transacional e
+  injeção de power-cut/reboot com verificação do filesystem. Só declarar
+  dispositivos/formatos efetivamente exercitados.
+
+### ADR-0028 — NE2000 PIO e pilha de rede limitada (ACEITA PARA FASE 17 PARCIAL)
+
+- **Contexto/problema:** a Fase 14 descobre PCI, mas o kernel ainda não tem
+  mapeamento MMIO genérico, DMA para memória de sistema, roteamento de IRQ de
+  dispositivo, filas assíncronas, user mode ou sincronização SMP. A Fase 15
+  fornece clock monotônico PIT; as fases 11–12 ainda são internas ao kernel.
+- **Alternativas consideradas:** E1000/virtio-net com anéis e DMA, adiamento
+  da rede até haver DMA/IOMMU, ou NE2000 PCI com acesso programado por I/O. Foi
+  escolhido `ne2k_pci`/RTL8029 no QEMU porque oferece NIC utilizável por meio
+  de I/O PIO e memória interna da placa, evitando presumir que endereço virtual
+  seja endereço DMA ou habilitar IRQ de dispositivo não validada.
+- **Decisão:** adicionar a interface de rede genérica e uma pilha estática e
+  bounded para Ethernet II, ARP, IPv4 sem fragmentação, ICMPv4 Echo e UDP.
+  Endereço estático é configurado apenas na imagem de teste. A integração é
+  síncrona no idle context; chamadas de usuário, sockets, DHCP, TCP, IPv6,
+  firewall e autenticação permanecem fora do escopo.
+- **Evidência:** host tests verificam protocolos, checksums, dados malformados,
+  limites, endpoints, timeouts finitos e falha de transmissão. QEMU 11.1.2 /
+  OVMF q35 detecta PCI `10ec:8029`; script com rede user/slirp recebe 22 bytes
+  do host em `127.0.0.1:40170` e devolve resposta idêntica do guest
+  `10.0.2.15:40171`. Ping QEMU ao gateway respondeu 1/1; RTT foi quantizado
+  pelo PIT coarse e não sustenta alegação de latência. Boot normal sem NIC não
+  é fatal.
+- **Consequências/limites:** máximo 1518 bytes por frame, MTU 1500, payload
+  UDP 1472, cache ARP 16 entradas/60 s, oito endpoints UDP e sem filas
+  ilimitadas. O driver faz polling PIO e usa memória no dispositivo; o stack
+  não é SMP-safe. ARP não é autenticado. Uma configuração QEMU não comprova
+  funcionamento em hardware físico, desempenho, segurança geral ou
+  compatibilidade ampla. TCP não é exposto parcialmente.
+- **Critérios de revisão:** exigir DMA mapper/IOMMU e ownership verificado
+  antes de driver que use DMA em memória de sistema; exigir IRQ routing e
+  processamento seguro antes de ativar interrupções de NIC; somente adicionar
+  TCP após implementação confiável de estados, ACK, retransmissão, fluxo,
+  timers e testes de perda/reordenação; não habilitar sockets até existir
+  isolamento e API de usuário validada.

@@ -84,20 +84,69 @@ $requiredFiles = @(
     'docs\faults\service-supervision.md',
     'docs\faults\diagnostics.md',
     'docs\faults\testing.md',
+    'docs\drivers\architecture.md',
+    'docs\drivers\driver-lifecycle.md',
+    'docs\drivers\pci-enumeration.md',
+    'docs\drivers\hardware-access.md',
+    'docs\drivers\interrupts.md',
+    'docs\drivers\dma-policy.md',
+    'docs\drivers\supported-devices.md',
+    'docs\drivers\testing.md',
+    'docs\time\clocksource.md',
+    'docs\time\timer-api.md',
+    'docs\time\scheduler-integration.md',
+    'docs\time\precision-and-jitter.md',
+    'docs\power\acpi-support.md',
+    'docs\power\power-states.md',
+    'docs\power\failure-handling.md',
+    'docs\power\testing.md',
+    'docs\time\clocksource.md',
+    'docs\time\timer-api.md',
+    'docs\time\scheduler-integration.md',
+    'docs\time\precision-and-jitter.md',
+    'docs\power\acpi-support.md',
+    'docs\power\power-states.md',
+    'docs\power\failure-handling.md',
+    'docs\power\testing.md',
     'kernel\security\capability.h',
     'kernel\security\capability.c',
     'kernel\ipc\channel.h',
     'kernel\ipc\channel.c',
     'kernel\fault\report.h',
     'kernel\fault\report.c',
+    'kernel\drivers\core\driver.h',
+    'kernel\drivers\core\driver.c',
+    'kernel\drivers\bus\pci.h',
+    'kernel\drivers\bus\pci.c',
+    'kernel\drivers\platform\uart16550.h',
+    'kernel\drivers\platform\uart16550.c',
+    'kernel\time\clocksource.h',
+    'kernel\time\clocksource.c',
+    'kernel\time\timer.h',
+    'kernel\time\timer.c',
+    'kernel\time\clocksource.h',
+    'kernel\time\clocksource.c',
+    'kernel\time\timer.h',
+    'kernel\time\timer.c',
     'tests\kernel\task\task_test.c',
     'tests\kernel\ipc\ipc_test.c',
     'tests\kernel\fault\fault_test.c',
+    'tests\kernel\drivers\drivers_test.c',
+    'tests\kernel\time\time_test.c',
+    'tests\kernel\time\time_test.c',
+    'kernel\net\network.h',
+    'kernel\net\network.c',
+    'kernel\drivers\net\ne2k_pci.h',
+    'kernel\drivers\net\ne2k_pci.c',
+    'tests\kernel\net\network_test.c',
+    'scripts\test-network-qemu.ps1',
     'scripts\test-kernel-preemption.ps1',
     'docs\phase-status.md',
     'docs\phase-status-11-20.md',
     'docs\phase-status-21-26.md',
     'docs\phase-gates.md',
+    'docs\storage\filesystem.md',
+    'docs\network\networking.md',
     'docs\toolchain.md',
     'docs\development-environment.md',
     'docs\language-decisions.md',
@@ -165,6 +214,18 @@ foreach ($phase in 11..20) {
 
     if ($laterPhases -notmatch '(?m)^\| 13\s+— Supervisor de falhas \| PARCIAL: REGISTRO E POLÍTICA FAIL-STOP') {
         throw 'Phase 13 must remain explicitly partial until service recovery exists.'
+    }
+    if ($laterPhases -notmatch '(?m)^\| 14\s+— Framework de drivers \| PARCIAL: REGISTRO, PCI E UART') {
+        throw 'Phase 14 must remain explicitly partial until broader device support exists.'
+    }
+    if ($laterPhases -notmatch '(?m)^\| 15\s+— Temporizadores e energia \| PARCIAL: PIT CLOCKSOURCE E DEADLINE QUEUE') {
+        throw 'Phase 15 must remain explicitly partial until scheduler and power support exist.'
+    }
+    if ($laterPhases -notmatch '(?m)^\| 16\s+— Armazenamento e filesystem \| PARCIAL: ATA PIO, ORIONFS E VFS INTERNO') {
+        throw 'Phase 16 must remain scoped to the tested ATA/ORIONFS implementation.'
+    }
+    if ($laterPhases -notmatch '(?m)^\| 17\s+— Rede \| PARCIAL: NE2000/PIO, IPv4, ICMP E UDP') {
+        throw 'Phase 17 must remain scoped to tested NE2000/IPv4/ICMP/UDP support.'
     }
 }
 

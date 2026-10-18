@@ -99,6 +99,28 @@ bool orion_x86_64_timer_stop(void)
     return orion_scheduler_disable_preemption();
 }
 
+bool orion_x86_64_timer_start_timekeeping(void)
+{
+    if (!timer_initialized || timer_active ||
+        orion_x86_64_interrupts_enabled() ||
+        orion_scheduler_preemption_enabled()) {
+        return false;
+    }
+    timer_active = true;
+    write_port(PIC_MASTER_DATA, UINT8_C(0xfe));
+    return true;
+}
+
+bool orion_x86_64_timer_read_ticks(uint64_t *ticks)
+{
+    if (!timer_initialized || !timer_active || ticks == NULL ||
+        orion_x86_64_interrupts_enabled()) {
+        return false;
+    }
+    *ticks = timer_ticks;
+    return true;
+}
+
 bool orion_x86_64_timer_get_stats(orion_x86_64_timer_stats *stats)
 {
     if (!timer_initialized || stats == NULL ||
@@ -117,12 +139,14 @@ bool orion_x86_64_timer_get_stats(orion_x86_64_timer_stats *stats)
 
 void orion_x86_64_timer_interrupt(void)
 {
-    if (!timer_active || !orion_scheduler_preemption_enabled() ||
-        timer_ticks == UINT64_MAX) {
+    if (!timer_active || timer_ticks == UINT64_MAX) {
         orion_panic_at("TIMER", "invalid or overflowing PIT interrupt");
     }
     ++timer_ticks;
     write_port(PIC_MASTER_COMMAND, UINT8_C(0x20));
+    if (!orion_scheduler_preemption_enabled()) {
+        return;
+    }
     const uint64_t start_tsc = read_tsc();
     bool preempted = false;
     if (!orion_scheduler_timer_interrupt(&preempted)) {

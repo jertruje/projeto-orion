@@ -17,6 +17,8 @@ typedef struct {
 
 bool orion_x86_64_timer_init(void);
 bool orion_x86_64_timer_stop(void);
+bool orion_x86_64_timer_start_timekeeping(void);
+bool orion_x86_64_timer_read_ticks(uint64_t *ticks);
 bool orion_x86_64_timer_get_stats(orion_x86_64_timer_stats *stats);
 void orion_x86_64_timer_interrupt(void);
 

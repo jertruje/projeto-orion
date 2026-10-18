@@ -1,10 +1,11 @@
-# ORION OS — estado verificável das fases 1–11
+# ORION OS — estado verificável das fases 1–17
 
-**Escopo deste registro:** evidência registrada para fases 1–11.
-**Estado geral:** INCOMPLETO. Fases 1–10 passaram somente nos escopos
-limitados descritos abaixo. A Fase 11 tem uma base interna de capabilities
-implementada e testada, mas não fornece isolamento de usuário e não atende
-integralmente ao gate de segurança.
+**Escopo deste registro:** matriz inicial das fases 1–11, com relatórios
+incrementais adicionados para as fases 13–17.
+**Estado geral:** INCOMPLETO. As fases documentadas têm evidência limitada
+aos escopos descritos; Fases 11–17 permanecem parciais em capacidades,
+recuperação, drivers, tempo/energia, armazenamento e rede, sem alegações além
+dos testes registrados.
 
 ## Evidência observada no workspace
 
@@ -65,6 +66,10 @@ integralmente ao gate de segurança.
 | 11 — Capabilities e isolamento | PARCIAL, TESTADA NO ESCOPO INTERNO DO KERNEL | Tabelas bounded por processo/objeto/slot/lease; handles locais com gerações; type/right checks; derivação e transferência em subset; revogação global e destruição adiada por lease. Host tests e self-test QEMU passam. Sem Ring 3, address spaces independentes, syscalls, device/memory mediation ou SMP; isolamento efetivo pendente. |
 | 12 — IPC | PARCIAL, TESTADO PARA THREADS DO KERNEL | Canais full-duplex limitados, filas FIFO copiadas e capabilities SEND/RECEIVE/QUERY/CLOSE; host negatives e troca real entre duas kernel threads em QEMU. Não há bloqueio/despertar, IPC Ring 3, transferência de capabilities em mensagens, cleanup de processo ou SMP. |
 | 13 — Supervisor de falhas | PARCIAL: DIAGNÓSTICOS E PANIC ESTRUTURADOS | Ring bounded de 32 eventos integrado a exceções CPU e panic; testes host e asserts QEMU de vetores. Sem processos/serviços isolados, containment de aplicação, restart, teardown IPC ou recuperação de falha de kernel. |
+| 14 — Framework de drivers | PARCIAL: REGISTRO, PCI READ-ONLY E UART | Registro bounded/lifecycle, enumeração PCI mechanism #1 somente leitura no bus 0 e driver QEMU COM1 exercitados. Sem drivers PCI funcionais, MMIO, IRQ de dispositivo, DMA, ECAM, traversal de pontes, hot-plug ou isolamento user-mode. |
+| 15 — Temporizadores e energia | PARCIAL: PIT MONOTÔNICO E TIMER QUEUE | PIT IRQ0 convertido em nanosegundos com clamp monotônico; fila estática de 32 deadlines, cancelamento por geração, one-shot/periódico e callbacks fora da IRQ. Host e QEMU testados. Sem sleep/wakeup, timeouts de IPC/drivers, ACPI, relógio civil, suspend/resume, shutdown, SMP ou hardware físico. |
+| 16 — Armazenamento e filesystem | PARCIAL: ATA PIO, ORIONFS E VFS INTERNO | Block layer bounded, ATA PIO LBA28 primary-master, ORIONFS v1 e VFS; host tests e persistência em dois boots QEMU com imagem dedicada. Sem partições, journal, atomicidade contra power loss, user descriptors ou SMP. |
+| 17 — Rede | PARCIAL: NE2000/PIO, IPv4, ICMP E UDP | Host protocol/negative tests e QEMU NE2000/slirp UDP echo byte-idêntico de 22 bytes; TCP, DHCP, IPv6, user sockets, IRQ/DMA de dispositivo, SMP e NIC física permanecem pendentes. |
 
 ## Comandos de build e teste
 
@@ -454,3 +459,58 @@ RECUPERAÇÃO NÃO IMPLEMENTADAS.
 - Não há recuperação de processo ou serviço, supervisor independente,
   política de restart/backoff, teardown de IPC por saída, Ring 3, isolamento
   entre processos, SMP, logging durável ou recuperação de corrupção do kernel.
+
+## Relatório da Fase 14
+
+**Estado:** PARCIALMENTE IMPLEMENTADA; UART E DESCOBERTA PCI TESTADAS EM QEMU,
+SEM SUPORTE A DISPOSITIVOS PCI.
+
+- `kernel/drivers/core/` fornece registry bounded (8 drivers/32 devices),
+  matching exclusivo, estados de lifecycle, falha explícita de start e cleanup
+  de recursos parciais. Callbacks executam fora das regiões IF-disabled.
+- `kernel/drivers/bus/pci.*` faz leitura da configuração PCI mechanism #1,
+  validando device/function/alinhamento/offset, identificando funções multi-
+  function e registrando IDs, classe e BAR dwords como metadados opacos. Varre
+  bus 0 apenas; não escreve config nem calcula tamanho de BAR.
+- `kernel/drivers/platform/uart16550.*` registra e inicia o COM1 legado; a
+  escrita serial real produz o marcador `16550-compatible COM1 driver online`
+  e continua sendo o dispositivo funcional de diagnóstico do kernel.
+- `mingw32-make test-unit build inspect test-boot` passou. Testes host cobrem
+  registro, rejeição, match, init failure/cleanup, stop, invariantes,
+  multifunção PCI e metadados. QEMU q35 confirmou seis PCI functions e
+  inventário sem rejeições.
+- `mingw32-make validate-docs` e `git diff --check` passaram.
+- PCI enumeration não comprova os dispositivos detectados como suportados.
+  Sem driver PCI de armazenamento/rede/display, MMIO, IRQ de dispositivo,
+  ECAM, pontes, DMA/IOMMU, hot-plug, isolamento user-mode ou hardware físico.
+
+## Relatório da Fase 15
+
+**Estado:** PARCIALMENTE IMPLEMENTADA; CLOCKSOURCE PIT E TIMER QUEUE HOST/QEMU
+TESTADOS. ACPI E TRANSIÇÕES DE ENERGIA NÃO IMPLEMENTADOS.
+
+- A fonte monotônica usa ticks reais de PIT IRQ0 com divisor 11.932 e
+  frequência de entrada documentada de 1.193.182 Hz. Conversões têm
+  verificações de overflow e leituras não retrocedem; não foi adotado TSC como
+  clocksource, nem existe relógio civil.
+- A timer queue tem 32 slots estáticos e handles com geração. Suporta deadlines
+  absolutos/relativos, one-shot, periodicidade fixed-delay, cancelamento,
+  limpeza e callbacks executados fora do handler de interrupção. Callback
+  falho desarma seu timer; cancelamento durante firing retorna BUSY.
+- O scheduler executa callbacks no loop idle e usa `hlt` com IRQ habilitada.
+  O scheduler não tem wait/wakeup geral, portanto não há `sleep` temporizado,
+  timeout bloqueante de IPC ou espera genérica de driver. Callbacks não são
+  executados por IRQ0.
+- QEMU/OVMF q35, 256 MiB e uma vCPU: o teste one-shot de 30 ms passou; quantum
+  PIT nominal reportado 10.000.150 ns; lateness observada 453 ns em uma amostra;
+  contador PIT avançou de 7 ticks após o teste de preempção para 10 ticks no
+  teste de timekeeping. A amostra não representa distribuição de jitter,
+  precisão de relógio civil ou garantia real-time.
+- O kernel não recebe lista de configuration tables UEFI/RSDP em
+  `orion_boot_info`, e não consome ACPI. Nenhum recurso ACPI foi identificado
+  pelo kernel. S3/S4/S5, shutdown/reboot, botão de energia, thermal management
+  e retomada não são suportados; o `hlt` do idle não é transição ACPI.
+- `mingw32-make test-unit build inspect test-boot` passou com código freestanding,
+  testes host, inspeção ELF sem símbolos indefinidos e expiração PIT real no
+  QEMU configurado. A suíte adicional de preempção e validação documental é
+  executada na verificação final.

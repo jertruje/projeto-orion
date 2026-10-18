@@ -48,11 +48,14 @@ idle.
 | OR-THR-01 | Thread kernel tem stack própria, estado consistente e troca conforme ABI documentada. | 9 | Testes determinísticos de criação, execução, yield e término. |
 | OR-SCHED-01 | Round-robin cooperativo precede qualquer preempção; estados e filas preservam invariantes. | 9 | Teste de sequência de scheduling e contadores. |
 | OR-TIME-01 | Timer e preempção só ativam após IDT, EOI, frame e retorno/interrupção validados. | 10 | Teste QEMU em uma vCPU com múltiplas threads e métricas. |
+| OR-TIME-02 | O kernel oferece leitura monotônica de tempo e timers limitados com cancelamento/expiração explícitos, sem executar callbacks na IRQ. | 15 | Testes host de conversão/lifecycle e expiração PIT medida em QEMU; sleep bloqueante e SMP permanecem fora do escopo atual. |
 | OR-SMP-01 | Nenhuma thread pode ser executada simultaneamente por duas CPUs. | 10+ | Testes repetidos com múltiplas vCPUs, sincronização e identificação por CPU. |
 | OR-SEC-01 | Privilégios, capacidades e acesso a hardware são concedidos explicitamente. | 11+ | Fase 11 valida capacidades internas; isolamento de usuário e authority de dispositivos ainda não implementados. |
 | OR-IPC-01 | Comunicação de kernel ocorre por canais limitados, capability-protected e com falhas de fila/endpoint explícitas. | 12 | Testes host de payload, direitos, quotas e lifecycle; troca entre threads do kernel observada em QEMU. Ring 3 permanece fora do escopo atual. |
 | OR-REL-01 | Recuperação só é alegada quando falha é contida, estado íntegro é verificado e serviço volta a responder. | 13+ | Injeção de falhas, taxa e tempo medidos, integridade verificada. |
 | OR-COMP-01 | Suporte é declarado por modelo/revisão/configuração de dispositivo testado. | 14+ | Inventário de dispositivos e logs reproduzíveis. |
+| OR-STOR-01 | I/O de bloco valida limites e erros; filesystem só é formatado por ação explícita, não altera disco desconhecido no boot, e suporte declarado inclui prova de leitura/escrita e persistência no ambiente nomeado. | 16 | Host negative tests, boot sem disco e dois boots QEMU com a mesma imagem ORIONFS; falha abrupta, atomicidade e hardware físico permanecem por testar. |
+| OR-NET-01 | Rede transmite/recebe quadros em dispositivo nomeado, valida protocolos declarados, limita buffers/endpoints e mantém timeout finito; ausência de NIC não impede boot normal. | 17 | Testes host de pacotes/limites/erros, boot sem NIC e round trip UDP byte-idêntico em QEMU com NE2000/slirp; TCP, user sockets, hardware físico e SMP permanecem pendentes. |
 | OR-BUILD-01 | Builds têm versões/configuração registradas e resultados repetíveis. | 4+ | Builds repetidos, hashes quando aplicável e ambiente descrito. |
 | OR-TOOL-01 | Harness independente compila um probe freestanding x86-64 ELF sem símbolos indefinidos, confirma arquitetura/formato/símbolo e compara duas saídas sob o mesmo ambiente. | 4 | `mingw32-make toolchain-test`; inspeção LLVM e SHA-256 idênticos. |
 

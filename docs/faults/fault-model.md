@@ -23,7 +23,7 @@ component.
 | IPC error | IPC returns explicit status | Caller receives the status; no centralized fault hook yet | Kernel continues unless an invariant is violated |
 | Resource exhaustion | Allocator, scheduler and bounded IPC pools | Existing APIs return failure/status; diagnostics are not uniformly centralized | No automatic restart |
 | CPU exception | x86-64 exception dispatch | Record vector, CPU error code, RIP, CPL context and CR2 for #PF; #BP resumes, others panic | No general exception recovery |
-| Driver failure | No ORION driver framework | Not currently detectable by a driver manager | Pending |
+| Driver failure | Registry start callback returns failure | Partial cleanup runs, binding enters FAILED, and a Phase 13 fault event records the PCI identity where available | The device can remain unused; no driver restart or containment of arbitrary kernel-code faults |
 | Suspected kernel corruption | Invariant checks and fatal paths | Panic and halt; best-effort bounded report | Never resume normal execution |
 | Kernel panic | Panic path | Record a bounded event, emit existing serial diagnostics and halt | No automatic reboot/recovery |
 
