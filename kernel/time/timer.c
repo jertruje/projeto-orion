@@ -18,6 +18,7 @@ typedef struct {
     timer_slot_state state;
     orion_timer_callback callback;
     void *context;
+    orion_thread *waiting_thread;
 } timer_slot;
 
 static timer_slot slots[ORION_TIMER_CAPACITY];
@@ -37,6 +38,7 @@ static void clear_slot(timer_slot *slot)
     slot->period_nanoseconds = 0;
     slot->callback = NULL;
     slot->context = NULL;
+    slot->waiting_thread = NULL;
     slot->state = TIMER_SLOT_UNUSED;
     --timer_stats.active;
 }
@@ -93,6 +95,7 @@ orion_timer_status orion_timer_arm_at(uint64_t deadline_nanoseconds,
     slot->period_nanoseconds = period_nanoseconds;
     slot->callback = callback;
     slot->context = context;
+    slot->waiting_thread = NULL;
     slot->state = TIMER_SLOT_ARMED;
     if (timer_stats.armed != UINT64_MAX) {
         ++timer_stats.armed;

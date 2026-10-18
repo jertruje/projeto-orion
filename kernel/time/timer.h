@@ -49,4 +49,11 @@ bool orion_timer_run_expired(uint32_t callback_limit, uint32_t *callbacks_run);
 bool orion_timer_get_stats(orion_timer_stats *stats);
 bool orion_timer_check_invariants(void);
 
+/**
+ * Blocks the current thread for the specified duration.
+ * @param duration_nanoseconds The time to sleep, in nanoseconds.
+ * @return ORION_TIMER_OK if successful, or an error code.
+ */
+orion_timer_status orion_timer_sleep(uint64_t duration_nanoseconds);
+
 #endif
