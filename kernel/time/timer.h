@@ -29,6 +29,7 @@ typedef struct {
     uint64_t callback_failures;
     uint64_t poll_scans;
     uint64_t max_lateness_nanoseconds;
+    uint64_t timer_interrupts;
     uint32_t active;
     uint32_t peak_active;
 } orion_timer_stats;

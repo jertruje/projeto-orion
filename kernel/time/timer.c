@@ -3,6 +3,8 @@
 #include <stddef.h>
 
 #include "../arch/x86_64/interrupt_state.h"
+#include "../task/thread.h"
+#include "../task/scheduler.h"
 #include "clocksource.h"
 
 typedef enum {
