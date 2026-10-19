@@ -13,6 +13,7 @@
 #include "../drivers/storage/ata_pio.h"
 #include "../exec/user_program.h"
 #include "../fs/orionfs.h"
+#include "../power/acpi.h"
 #include "../mm/active_page_tables.h"
 #include "../mm/memory_map.h"
 #include "../mm/physical.h"
@@ -491,6 +492,7 @@ static bool timekeeping_self_test(void)
         !orion_clocksource_get_stats(&clock_stats) ||
         !orion_timer_get_stats(&timer_stats) ||
         !orion_timer_check_invariants() || timer_stats.active != 0 ||
+        !orion_acpi_check_invariants() ||
         timer_stats.expirations != 1 ||
         !orion_clocksource_ticks_to_nanoseconds(
             1, ORION_X86_64_PIT_DIVISOR, ORION_X86_64_PIT_INPUT_HZ,
@@ -964,6 +966,12 @@ void kernel_main(const orion_boot_info *boot_info)
 #endif
 
     advance_stage(ORION_INIT_CORE_READY, ORION_INIT_IDLE);
+    if (!orion_acpi_init(boot_info)) {
+        orion_panic_at("POWER", "ACPI initialization failed");
+    }
+    if (!orion_log(ORION_LOG_INFO, "POWER", "ACPI subsystem initialized")) {
+        orion_panic_at("POWER", "failed to log ACPI initialization");
+    }
     if (!orion_log(ORION_LOG_INFO, "CORE",
                    "Minimal kernel is running; entering idle loop")) {
         orion_panic_at("CORE", "serial logging failed before idle loop");
