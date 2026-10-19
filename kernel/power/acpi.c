@@ -17,7 +17,7 @@ static bool validate_acpi_checksum(const void *table, size_t length);
 static uintptr_t find_rsdp_in_memory(void);
 static bool parse_rsdp(const acpi_rsdp *rsdp);
 static bool parse_xsdt(void);
-static uintptr_t find_acpi_table(const char *signature);
+
 
 // Implementation
 
@@ -25,6 +25,7 @@ bool orion_acpi_init(const orion_boot_info *boot_info)
 {
     // We don't actually need the boot_info for our ACPI scanning approach,
     // but we keep the parameter for compatibility with the expected interface
+    (void)boot_info;
     
     // Disable interrupts during ACPI initialization to prevent race conditions
     const bool was_enabled = orion_x86_64_interrupts_save_disable();
@@ -76,6 +77,7 @@ bool orion_acpi_enter_sleep_state(uint8_t sleep_state)
     // This would require parsing the FADT to get the PM1 control register values
     // and then writing the appropriate sleep type/sl flags to enter the requested state
     // For now, we'll just return false to indicate not implemented
+    (void)sleep_state;
     return false;
 }
 
@@ -243,10 +245,4 @@ static bool parse_xsdt(void)
     return true;
 }
 
-static uintptr_t find_acpi_table(const char *signature)
-{
-    // In a full implementation, we would parse the XSDT to find the table with the given signature
-    // For now, we'll return 0 to indicate not implemented
-    (void)signature; // Unused parameter
-    return 0;
-}
+
