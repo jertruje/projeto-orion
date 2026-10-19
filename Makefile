@@ -37,5 +37,4 @@ KERNEL_OBJECTS := $(BUILD)/entry.o $(BUILD)/main.o $(BUILD)/serial.o \
 KERNEL_OBJECTS += /net-network.o /ne2k-pci.o
 KERNEL_OBJECTS += /user-mode.o /user-space.o
 KERNEL_OBJECTS += /drivers/graphics/vga.o
-KERNEL_OBJECTS += /power/acpi.o
 KERNEL_OBJECTS += /syscall.o /elf64.o /user-program.o

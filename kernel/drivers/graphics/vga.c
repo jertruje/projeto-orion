@@ -13,7 +13,8 @@ static volatile uint16_t* const vga_buffer = (volatile uint16_t*)0xB8000;
 bool orion_vga_graphics_init(void)
 {
     // Clear the buffer on init
-    return orion_vga_clear(0x00); // black background, black foreground (invisible)
+    orion_vga_clear(0x00);
+    return true;
 }
 
 void orion_vga_set_pixel(uint32_t x, uint32_t y, uint8_t color)
@@ -21,7 +22,7 @@ void orion_vga_set_pixel(uint32_t x, uint32_t y, uint8_t color)
     if (x >= VGA_WIDTH || y >= VGA_HEIGHT) {
         return;
     }
-    uint16_t* ptr = &vga_buffer[y * VGA_WIDTH + x];
+    volatile uint16_t* ptr = &vga_buffer[y * VGA_WIDTH + x];
     // Character: solid block (0xDB)
     // Attribute: foreground = color (lower 4 bits), background = 0 (black) 
     // Actually we want the pixel to be the color; we can set foreground to color and background to 0.
