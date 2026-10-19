@@ -7,6 +7,10 @@
 #define ORION_LIB_SYSCALL_CONSOLE_WRITE 1U
 #define ORION_LIB_SYSCALL_SYSTEM_INFO 2U
 #define ORION_LIB_SYSCALL_PROCESS_EXIT 3U
+#define ORION_LIB_SYSCALL_CAP_ACQUIRE 4U
+#define ORION_LIB_SYSCALL_CAP_DERIVE 5U
+#define ORION_LIB_SYSCALL_CAP_TRANSFER 6U
+#define ORION_LIB_SYSCALL_CAP_CLOSE 7U
 
 typedef struct {
     uint32_t abi_version;
@@ -34,3 +38,7 @@ int64_t orion_system_info(orion_lib_system_info *information);
 _Noreturn void orion_exit(uint64_t exit_code);
 
 #endif
+int64_t orion_capability_acquire(orion_capability_handle handle, orion_object_type expected_type, uint32_t required_rights, orion_capability_lease *lease);
+int64_t orion_capability_derive(orion_capability_handle handle, uint32_t reduced_rights, orion_capability_handle *derived_handle);
+int64_t orion_capability_transfer(orion_capability_handle handle, uint64_t target_process_id, uint32_t reduced_rights, orion_capability_handle *transferred_handle);
+int64_t orion_capability_close(orion_capability_handle handle);
