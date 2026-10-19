@@ -295,6 +295,75 @@ bool orion_timer_get_stats(orion_timer_stats *stats)
     orion_x86_64_interrupts_restore(was_enabled);
     return true;
 }
+orion_timer_status orion_timer_sleep(uint64_t duration_nanoseconds)
+{
+    if (!timer_initialized) {
+        return ORION_TIMER_UNAVAILABLE;
+    }
+
+    uint64_t now = 0;
+    if (!orion_clocksource_now_nanoseconds(&now)) {
+        return ORION_TIMER_UNAVAILABLE;
+    }
+    if (duration_nanoseconds > UINT64_MAX - now) {
+        return ORION_TIMER_INVALID;
+    }
+
+    const bool was_enabled = orion_x86_64_interrupts_save_disable();
+    orion_thread *current = orion_scheduler_current();
+    if (current == NULL || current->state != ORION_THREAD_RUNNING) {
+        orion_x86_64_interrupts_restore(was_enabled);
+        return ORION_TIMER_INVALID;
+    }
+
+    // Find an available timer slot
+    uint32_t index = 0;
+    while (index < ORION_TIMER_CAPACITY &&
+           (slots[index].state != TIMER_SLOT_UNUSED ||
+            slots[index].generation == UINT32_MAX)) {
+        ++index;
+    }
+    if (index == ORION_TIMER_CAPACITY) {
+        orion_x86_64_interrupts_restore(was_enabled);
+        return ORION_TIMER_FULL;
+    }
+    if (timer_stats.active == UINT32_MAX) {
+        orion_x86_64_interrupts_restore(was_enabled);
+        return ORION_TIMER_INVALID;
+    }
+
+    // Prepare the timer slot but don't arm it yet
+    timer_slot *slot = &slots[index];
+    ++slot->generation;
+    slot->deadline_nanoseconds = now + duration_nanoseconds;
+    slot->period_nanoseconds = 0; // One-shot for sleep
+    slot->callback = NULL;
+    slot->context = NULL;
+    slot->waiting_thread = current;
+    slot->state = TIMER_SLOT_ARMED;
+    
+    // Update stats
+    if (timer_stats.armed != UINT64_MAX) {
+        ++timer_stats.armed;
+    }
+    ++timer_stats.active;
+    if (timer_stats.active > timer_stats.peak_active) {
+        timer_stats.peak_active = timer_stats.active;
+    }
+
+    // Block the current thread
+    if (!orion_thread_transition(current, ORION_THREAD_BLOCKED)) {
+        // If we failed to block the thread, clean up the timer slot
+        clear_slot(slot);
+        orion_x86_64_interrupts_restore(was_enabled);
+        return ORION_TIMER_INVALID;
+    }
+
+    orion_x86_64_interrupts_restore(was_enabled);
+    return ORION_TIMER_OK;
+}
+
+
 
 bool orion_timer_check_invariants(void)
 {

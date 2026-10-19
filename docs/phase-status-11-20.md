@@ -2,9 +2,7 @@
 
 **Interpretação do lote:** “2” corresponde às fases 11–20, conforme o esquema
 combinado.  
-**Resultado atual:** Fases 11–17 parciais; Fase 12 implementada somente para
-threads do kernel; Fase 13 parcial em diagnóstico de falhas, sem supervisor ou
-recuperação de serviços; Fase 18 bloqueada, Fase 19 conclu�da e Fase 20 bloqueada.
+**Resultado atual:** Fases 11 e 13 parciais; Fase 12 implementada somente para threads do kernel; Fase 14 conclu�da no escopo de registry, PCI e UART; Fases 15, 16, 17 parciais; Fase 18 bloqueada; Fase 19 conclu�da no escopo de syscalls e aplica��es independentes; Fase 20 bloqueada.
 Nenhum subsistema futuro foi simulado nem declarado funcional sem evidência.
 
 ## Estado atual após revalidação
@@ -13,7 +11,7 @@ O estado abaixo reúne evidência dos gates já exercitados. A Fase 17 avançou
 para um caminho de rede parcial e a Fase 19 agora executa uma aplicação de
 teste CPL3; as limitações de cada gate continuam explícitas:
 
-| Área necessária | Estado observado |
+| Ýrea necessária | Estado observado |
 |---|---|
 | UEFI e kernel x86-64 | Boot passa no QEMU/EDK2. O kernel valida boot-info, inicializa subsistemas testados até o scheduler/capability self-test e permanece em idle. |
 | GDT, IDT e exceções | Fase 7 validou #BP/#DE/#UD/#GP/#PF/#DF; a Fase 10 acrescentou apenas vector 32/PIT PIC IRQ0 e o testou em QEMU single-vCPU. Outros IRQs continuam mascarados. |
@@ -35,7 +33,7 @@ teste CPL3; as limitações de cada gate continuam explícitas:
 |---|---|---|
 | 11 — Capacidades e isolamento | PARCIAL | Host negatives e QEMU startup self-test validam API interna e lifecycle básico. Gate de isolamento efetivo permanece aberto: Ring 3, roots independentes, syscalls, teardown integrado de processos, APIs reais de objetos e sincronização SMP ausentes. |
 | 12 — IPC | PARCIAL | Canais FIFO full-duplex, limitados e capability-protected; host negativos e tráfego entre duas kernel threads no QEMU. Sem wait/wakeup, caller user buffers, IPC de aplicações, cleanup de process exit ou SMP. |
-| 13 — Supervisor de falhas | PARCIAL: REGISTRO E POLÍTICA FAIL-STOP | Ring bounded e estático registra exceções CPU e panic; #BP retoma e as demais exceções testadas seguem para halt. Não há processos/serviços isolados, contenção de aplicação, restart, teardown IPC ou recuperação do kernel. Supervisor permanece bloqueado até lifecycle de processo/serviço e IPC seguro. |
+| 13 — Supervisor de falhas | PARCIAL: REGISTRO E POLÝTICA FAIL-STOP | Ring bounded e estático registra exceções CPU e panic; #BP retoma e as demais exceções testadas seguem para halt. Não há processos/serviços isolados, contenção de aplicação, restart, teardown IPC ou recuperação do kernel. Supervisor permanece bloqueado até lifecycle de processo/serviço e IPC seguro. |
 | 14 — Framework de drivers | CONCLU�DA NO ESCOPO DE REGISTRY, PCI E UART | Registry bounded com lifecycle, enumeração PCI mechanism #1 no bus 0 e UART COM1. A Fase 17 acrescenta somente o binding específico NE2000/PIO; sem bridge traversal/ECAM, BAR sizing/alocação, MMIO genérico, IRQ de dispositivo, DMA/IOMMU, hot-plug, user-mode driver ou SMP. |
 | 15 — Temporizadores e energia | PARCIAL: PIT CLOCKSOURCE E DEADLINE QUEUE | PIT IRQ0 fornece nanosegundos monotônicos coarse; pool estático de 32 timers com cancelamento generacional, one-shot/periódico e callback fora da IRQ; host tests e expiração real QEMU passaram. Sem scheduler wait/wakeup, timeouts de IPC/drivers, ACPI, horário civil, eventos ou transições de energia. |
 | 16 — Armazenamento e filesystem | PARCIAL: ATA PIO, ORIONFS E VFS INTERNO | Block layer bounded, ATA PIO LBA28 primary-master, filesystem ORIONFS v1 e fachada VFS; host tests e prova de persistência em dois boots QEMU com disco dedicado passaram. Sem partições, journal, cache, atomicidade contra interrupção de energia, user mode/FDs, wait/wakeup, timeout de dispositivo ou SMP. |
