@@ -2,7 +2,7 @@
 
 **InterpretaÃ§Ã£o do lote:** â€œ2â€ corresponde Ã s fases 11â€“20, conforme o esquema
 combinado.  
-**Resultado atual:** Fases 11 e 13 parciais; Fase 12 implementada somente para threads do kernel; Fase 14 concluída no escopo de registry, PCI e UART; Fases 15, 16, 17 parciais; Fase 18 bloqueada; Fase 19 concluída no escopo de syscalls e aplicações independentes; Fase 20 bloqueada.
+**Resultado atual:** Fases 11 e 13 parciais; Fase 12 implementada somente para threads do kernel; Fase 14 concluída no escopo de registry, PCI e UART; Fase 15 wait/wakeup implementado; Fases 16, 17 parciais; Fase 18 bloqueada; Fase 19 concluída no escopo de syscalls e aplicações independentes; Fase 20 bloqueada.
 Nenhum subsistema futuro foi simulado nem declarado funcional sem evidÃªncia.
 
 ## Estado atual apÃ³s revalidaÃ§Ã£o
