@@ -19,6 +19,7 @@
 #include "../power/acpi.h"
 #include "../power/acpi.h"
 #include "../power/acpi.h"
+#include "../power/acpi.h"
 #include "../mm/active_page_tables.h"
 #include "../mm/memory_map.h"
 #include "../mm/physical.h"
