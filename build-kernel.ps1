@@ -14,7 +14,7 @@ $linker = Join-Path $bin 'ld.lld.exe'
 $required = @($clang, $linker)
 $missing = @($required | Where-Object { -not (Test-Path -LiteralPath $_ -PathType Leaf) })
 if ($missing.Count -gt 0) {
-    throw "Build cannot proceed; missing required executables: $($missing -join ', ')"
+    throw "Build cannot proceed; missing required executables: $($missing -join ', ')'"  
 }
 
 # Output directory
@@ -92,13 +92,7 @@ $sourceFiles = @(
     'kernel/fs/orionfs.c',
     'kernel/vfs/vfs.c',
     'kernel/net/network.c',
-    'kernel/drivers/net/ne2k_pci.c',
-    'kernel/arch/x86_64/user_mode.S',
-    'kernel/drivers/graphics/vga.c',
-    'kernel/syscall/syscall.c',
-    'kernel/exec/elf64.c',
-    'kernel/exec/user_program.c',
-    'kernel/package/package.c'
+    'kernel/drivers/net/ne2k_pci.c'
 )
 
 # Compile each source file to an object file
@@ -120,9 +114,7 @@ foreach ($sourceFile in $sourceFiles) {
     }
     
     $objectFiles += $objectFile
-}
-
-# Link all object files together
+}# Link all object files together
 Write-Host "Linking object files into kernel.elf..."
 $linkArguments = $linkerArgs + $objectFiles
 & $linker @linkArguments
@@ -130,4 +122,4 @@ if ($LASTEXITCODE -ne 0) {
     throw "Linking failed"
 }
 
-Write-Host "Kernel build successful: $(Join-Path $buildDir 'kernel.elf')"
+Write-Host "Kernel build successful: $buildDir"
