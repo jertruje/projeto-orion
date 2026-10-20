@@ -77,3 +77,4 @@ typedef struct {
 
 extern orion_package_manager_t orion_package_manager;
 
+#endif /* ORION_PACKAGE_PACKAGE_H */

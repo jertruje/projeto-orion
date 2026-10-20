@@ -27,6 +27,7 @@ if (-not (Test-Path $buildDir)) {
 $compileFlags = @(
     '--target=x86_64-elf',
     '-Iinclude',
+    '-Ikernel',
     '-Ikernel/console',
     '-Ikernel/log',
     '-Ikernel/panic',
@@ -96,7 +97,8 @@ $sourceFiles = @(
     'kernel/drivers/graphics/vga.c',
     'kernel/syscall/syscall.c',
     'kernel/exec/elf64.c',
-    'kernel/exec/user_program.c'
+    'kernel/exec/user_program.c',
+    'kernel/package/package.c'
 )
 
 # Compile each source file to an object file
