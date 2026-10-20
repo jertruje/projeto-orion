@@ -70,10 +70,10 @@ typedef struct {
 typedef struct {
     orion_object_type type;
     uint32_t rights;
+    struct orion_process *owner;
 } orion_capability_info;
-
+} orion_capability_info;
 bool orion_capability_system_init(void);
-bool orion_capability_process_init(struct orion_process *process);
 orion_capability_status orion_capability_process_release(
     struct orion_process *process);
 bool orion_capability_process_check(const struct orion_process *process);
